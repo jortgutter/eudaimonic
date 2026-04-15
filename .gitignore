@@ -1,45 +1,43 @@
-# Dependencies
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
 node_modules/
 
-# Build outputs
+# Expo
+.expo/
 dist/
-build/
-.next/
-out/
-coverage/
+web-build/
+expo-env.d.ts
 
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
 
-# Environment variables (secrets)
-.env
-.env.local
-.env.*.local
+# Metro
+.metro-health-check*
 
-# OS / Editor files
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
 .DS_Store
-Thumbs.db
-.vscode/
-.idea/
+*.pem
 
-# Cache / temp
-.cache/
-.tmp/
-.temp/
+# local env files
+.env*.local
 
-# Package manager files (optional — usually KEEP lockfiles!)
-# Uncomment only if you explicitly don't want them tracked
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
-
-# TypeScript
+# typescript
 *.tsbuildinfo
 
-# Misc
-*.swp
+app-example
+
+# generated native folders
+/ios
+/android
