@@ -22,42 +22,42 @@ export default function HomeScreen() {
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           <Pressable
             style={styles.button}
-            onPress={() => router.push("/(pages)/wisdom")}
+            onPress={() => router.push("/wisdom")}
           >
             <Text>Wisdom</Text>
           </Pressable>
 
           <Pressable
             style={styles.button}
-            onPress={() => router.push("/(pages)/humanity")}
+            onPress={() => router.push("/humanity")}
           >
             <Text>Humanity</Text>
           </Pressable>
 
           <Pressable
             style={styles.button}
-            onPress={() => router.push("/(pages)/purpose")}
+            onPress={() => router.push("/purpose")}
           >
             <Text>Purpose</Text>
           </Pressable>
 
           <Pressable
             style={styles.button}
-            onPress={() => router.push("/(pages)/justice")}
+            onPress={() => router.push("/justice")}
           >
             <Text>Justice</Text>
           </Pressable>
 
           <Pressable
             style={styles.button}
-            onPress={() => router.push("/(pages)/restraint")}
+            onPress={() => router.push("/restraint")}
           >
             <Text>Restraint</Text>
           </Pressable>
 
           <Pressable
             style={styles.button}
-            onPress={() => router.push("/(pages)/courage")}
+            onPress={() => router.push("/courage")}
           >
             <Text>Courage</Text>
           </Pressable>
