@@ -29,12 +29,11 @@ export default function TabTwoScreen() {
             fontFamily: Fonts.rounded,
           }}
         >
-          Explored!
+          Explore
         </ThemedText>
       </ThemedView>
       <ThemedText>
-        This app includes example code to help you get started. But does it
-        reflect changes I make?
+        This app includes example code to help you get started.
       </ThemedText>
       <Collapsible title="File-based routing">
         <ThemedText>
