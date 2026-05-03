@@ -1,10 +1,11 @@
 import { useState } from "react";
 import {
-    FlatList,
-    Modal,
-    StyleSheet,
-    TouchableOpacity,
-    View,
+  FlatList,
+  Modal,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
@@ -55,6 +56,22 @@ export default function WatchHistoryScreen() {
     useState<any>(null);
   const [showInfoOverlay, setShowInfoOverlay] = useState(false);
   const [selectedMovieForInfo, setSelectedMovieForInfo] = useState<any>(null);
+  const [watchHistorySearchQuery, setWatchHistorySearchQuery] = useState("");
+  const [addMovieSearchQuery, setAddMovieSearchQuery] = useState("");
+
+  // Search/filter function
+  const searchMovies = (movies: any[], query: string): any[] => {
+    if (!query.trim()) return movies;
+    
+    const lowerQuery = query.toLowerCase();
+    return movies.filter((movie) => {
+      const titleMatch = movie.title.toLowerCase().includes(lowerQuery);
+      const categoryMatch = movie.categories.some((cat: string) =>
+        cat.toLowerCase().includes(lowerQuery)
+      );
+      return titleMatch || categoryMatch;
+    });
+  };
 
   // Open menu and capture button position
   const openMenu = (movieId: string, event: any) => {
@@ -104,14 +121,26 @@ export default function WatchHistoryScreen() {
     setOpenMenuId(null);
   };
 
+  // Clear search when modal is closed
+  const handleCloseAddModal = () => {
+    setShowAddModal(false);
+    setAddMovieSearchQuery("");
+  };
+
   return (
     <ThemedView style={styles.container}>
       <ThemedText type="title">Watch History</ThemedText>
       <ThemedText type="subtitle">
         You can view your watched movies here.
       </ThemedText>
+      <TextInput
+        placeholder="Search movies..."
+        value={watchHistorySearchQuery}
+        style={styles.searchBar}
+        onChangeText={(text) => setWatchHistorySearchQuery(text)}
+      />
       <FlatList
-        data={movies}
+        data={searchMovies(movies, watchHistorySearchQuery)}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -184,8 +213,14 @@ export default function WatchHistoryScreen() {
           <ThemedText type="title" style={styles.modalTitle}>
             Add Movie to History
           </ThemedText>
+          <TextInput
+            placeholder="Search movies..."
+            value={addMovieSearchQuery}
+            style={styles.searchBar}
+            onChangeText={(text) => setAddMovieSearchQuery(text)}
+          />
           <FlatList
-            data={getAvailableMovies()}
+            data={searchMovies(getAvailableMovies(), addMovieSearchQuery)}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity
@@ -207,7 +242,7 @@ export default function WatchHistoryScreen() {
           />
           <TouchableOpacity
             style={styles.closeButton}
-            onPress={() => setShowAddModal(false)}
+            onPress={handleCloseAddModal}
           >
             <ThemedText style={styles.closeButtonText}>Close</ThemedText>
           </TouchableOpacity>
@@ -522,6 +557,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 20,
     opacity: 0.8,
+  },
+  searchBar: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "#ccc",
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    fontSize: 16,
+    width: "35%",
+    alignSelf: "center",
+    color: "#fff",
   },
   ratingButtonsContainer: {
     flexDirection: "row",
