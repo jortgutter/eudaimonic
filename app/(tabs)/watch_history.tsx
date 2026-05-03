@@ -1,28 +1,34 @@
-import { useState } from 'react';
-import { FlatList, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useState } from "react";
+import {
+    FlatList,
+    Modal,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
 
 // Movie catalogue - this will eventually come from an API/database
 const MovieCatalogue = [
   {
-    id: '1',
-    title: 'Princess Mononoke',
-    poster: 'placeholder',
-    categories: ['Courage', 'Wisdom'],
+    id: "1",
+    title: "Princess Mononoke",
+    poster: "placeholder",
+    categories: ["Courage", "Wisdom"],
   },
   {
-    id: '2',
-    title: 'Iron Man',
-    poster: 'placeholder',
-    categories: ['Courage', 'Wisdom'],
+    id: "2",
+    title: "Iron Man",
+    poster: "placeholder",
+    categories: ["Courage", "Wisdom"],
   },
   {
-    id: '3',
-    title: 'Up',
-    poster: 'placeholder',
-    categories: ['Humanity'],
+    id: "3",
+    title: "Up",
+    poster: "placeholder",
+    categories: ["Humanity"],
   },
 ];
 
@@ -43,16 +49,17 @@ export default function WatchHistoryScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [ratings, setRatings] = useState<{ [movieId: string]: number }>({});
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0});
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [showRatingOverlay, setShowRatingOverlay] = useState(false);
-  const [selectedMovieForRating, setSelectedMovieForRating] = useState<any>(null);
+  const [selectedMovieForRating, setSelectedMovieForRating] =
+    useState<any>(null);
   const [showInfoOverlay, setShowInfoOverlay] = useState(false);
   const [selectedMovieForInfo, setSelectedMovieForInfo] = useState<any>(null);
 
   // Open menu and capture button position
   const openMenu = (movieId: string, event: any) => {
     const { pageX, pageY } = event.nativeEvent;
-    setMenuPosition({ x: pageX, y: pageY});
+    setMenuPosition({ x: pageX, y: pageY });
     setOpenMenuId(movieId);
   };
   const getAvailableMovies = () => {
@@ -100,7 +107,9 @@ export default function WatchHistoryScreen() {
   return (
     <ThemedView style={styles.container}>
       <ThemedText type="title">Watch History</ThemedText>
-      <ThemedText type="subtitle">You can view your watched movies here.</ThemedText>
+      <ThemedText type="subtitle">
+        You can view your watched movies here.
+      </ThemedText>
       <FlatList
         data={movies}
         keyExtractor={(item) => item.id}
@@ -125,11 +134,19 @@ export default function WatchHistoryScreen() {
                   <ThemedText>Poster</ThemedText>
                 </ThemedView>
                 <ThemedView style={styles.movieInfo}>
-                  <ThemedText type="subtitle" numberOfLines={1} ellipsizeMode="tail">
+                  <ThemedText
+                    type="subtitle"
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
                     {item.title}
                   </ThemedText>
-                  <ThemedText style={styles.categories} numberOfLines={1} ellipsizeMode="tail">
-                    {item.categories.join(', ')}
+                  <ThemedText
+                    style={styles.categories}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {item.categories.join(", ")}
                   </ThemedText>
                 </ThemedView>
               </ThemedView>
@@ -141,17 +158,18 @@ export default function WatchHistoryScreen() {
               >
                 <ThemedText style={styles.ratingLabel}>Rating</ThemedText>
                 <ThemedText style={styles.ratingValue}>
-                  {ratings[item.id] ? `${ratings[item.id]}/10` : 'Not rated'}
+                  {ratings[item.id] ? `${ratings[item.id]}/10` : "Not rated"}
                 </ThemedText>
               </TouchableOpacity>
-
-
             </ThemedView>
           </TouchableOpacity>
         )}
         contentContainerStyle={styles.listContent}
       />
-      <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)}>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowAddModal(true)}
+      >
         <ThemedText style={styles.fabText}>+</ThemedText>
       </TouchableOpacity>
 
@@ -180,7 +198,7 @@ export default function WatchHistoryScreen() {
                 <ThemedView style={styles.movieInfo}>
                   <ThemedText type="subtitle">{item.title}</ThemedText>
                   <ThemedText style={styles.categories}>
-                    {item.categories.join(', ')}
+                    {item.categories.join(", ")}
                   </ThemedText>
                 </ThemedView>
               </TouchableOpacity>
@@ -218,7 +236,9 @@ export default function WatchHistoryScreen() {
                   style={styles.ratingButton}
                   onPress={() => rateMovie(score)}
                 >
-                  <ThemedText style={styles.ratingButtonText}>{score}</ThemedText>
+                  <ThemedText style={styles.ratingButtonText}>
+                    {score}
+                  </ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -253,8 +273,8 @@ export default function WatchHistoryScreen() {
             <ThemedText>Poster</ThemedText>
           </ThemedView>
           <ThemedText style={styles.infoPlaceholder}>
-            Movie information will be displayed here. This page will eventually show genres,
-            cast, description, and all other IMDb-like information.
+            Movie information will be displayed here. This page will eventually
+            show genres, cast, description, and all other IMDb-like information.
           </ThemedText>
           {ratings[selectedMovieForInfo?.id] && (
             <ThemedText style={styles.infoRating}>
@@ -280,7 +300,7 @@ export default function WatchHistoryScreen() {
             style={[
               styles.menuModalContent,
               {
-                position: 'absolute',
+                position: "absolute",
                 top: menuPosition.y,
                 left: menuPosition.x,
               },
@@ -327,48 +347,48 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 100,
-    alignItems: 'center',
+    alignItems: "center",
   },
   movieItemContainer: {
     width: 500,
     aspectRatio: 500 / 140,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   movieItem: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderRadius: 8,
     gap: 12,
     marginVertical: 6,
-    height: '100%',
+    height: "100%",
     zIndex: 1,
   },
   menuButton: {
     padding: 8,
-    position: 'absolute',
+    position: "absolute",
     top: 4,
     right: 4,
     zIndex: 10,
   },
   menuIcon: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   movieContent: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   ratingSection: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingHorizontal: 8,
     width: 70,
-    height: '100%',
-    justifyContent: 'center',
+    height: "100%",
+    justifyContent: "center",
   },
   ratingLabel: {
     fontSize: 12,
@@ -376,23 +396,23 @@ const styles = StyleSheet.create({
   },
   ratingValue: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginTop: 2,
   },
   menuModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0)',
+    backgroundColor: "rgba(0, 0, 0, 0)",
   },
   menuModalContent: {
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
     borderRadius: 8,
-    overflow: 'hidden',
+    overflow: "hidden",
     minWidth: 200,
   },
   menuItem: {
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomColor: "rgba(255, 255, 255, 0.1)",
     zIndex: 1000,
   },
   deleteMenuItem: {
@@ -400,15 +420,15 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   deleteMenuText: {
-    color: '#FF3B30',
+    color: "#FF3B30",
     zIndex: 1000,
   },
   posterPlaceholder: {
     width: 60,
     height: 90,
-    backgroundColor: 'gray',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "gray",
+    justifyContent: "center",
+    alignItems: "center",
     borderRadius: 4,
     flexShrink: 0,
   },
@@ -421,25 +441,25 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   fab: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 20,
     right: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#007AFF",
+    justifyContent: "center",
+    alignItems: "center",
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
   },
   fabText: {
     fontSize: 24,
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
   },
   modalContainer: {
     flex: 1,
@@ -451,83 +471,83 @@ const styles = StyleSheet.create({
   },
   modalListContent: {
     paddingBottom: 20,
-    alignItems: 'center',
+    alignItems: "center",
   },
   movieSelectItem: {
     width: 300,
     maxWidth: 500,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderRadius: 8,
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomColor: "rgba(255, 255, 255, 0.1)",
     marginVertical: 6,
   },
   closeButton: {
     padding: 12,
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 16,
     maxWidth: 500,
-    width: '100%',
-    alignSelf: 'center',
+    width: "100%",
+    alignSelf: "center",
   },
   closeButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
   },
   overlayContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   overlayContent: {
-    backgroundColor: 'rgba(40, 40, 40, 0.95)',
+    backgroundColor: "rgba(40, 40, 40, 0.95)",
     borderRadius: 12,
     padding: 24,
     maxWidth: 400,
-    width: '100%',
+    width: "100%",
   },
   overlayTitle: {
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
   overlayDescription: {
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 20,
     opacity: 0.8,
   },
   ratingButtonsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: 8,
     marginBottom: 20,
   },
   ratingButton: {
-    width: '20%',
+    width: "20%",
     aspectRatio: 1,
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   ratingButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: 'white',
+    fontWeight: "bold",
+    color: "white",
   },
   overlayCloseButton: {
     padding: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   infoContainer: {
     flex: 1,
@@ -536,28 +556,28 @@ const styles = StyleSheet.create({
   },
   infoCloseButton: {
     padding: 12,
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 16,
     maxWidth: 100,
   },
   infoCloseButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
   },
   infoTitle: {
     marginBottom: 16,
-    textAlign: 'center',
+    textAlign: "center",
   },
   infoPosterPlaceholder: {
     width: 120,
     height: 180,
-    backgroundColor: 'gray',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "gray",
+    justifyContent: "center",
+    alignItems: "center",
     borderRadius: 8,
-    alignSelf: 'center',
+    alignSelf: "center",
     marginBottom: 20,
   },
   infoPlaceholder: {
@@ -568,10 +588,10 @@ const styles = StyleSheet.create({
   },
   infoRating: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: "rgba(255, 255, 255, 0.1)",
   },
 });
