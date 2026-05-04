@@ -1,37 +1,19 @@
 import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { MovieCatalogue } from "@/constants/dummycatalogue";
 import { Image } from "expo-image";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import tinycolor from "tinycolor2";
 
 type Movie = {
-  id: number;
+  id: string;
   title: string;
   poster: string;
   categories: string[];
 };
-const movies: Movie[] = [
-  {
-    id: 1,
-    title: "Princess Mononoke",
-    poster: "placeholder",
-    categories: ["Courage", "wisdom"],
-  },
-  {
-    id: 2,
-    title: "Iron Man",
-    poster: "placeholder",
-    categories: ["Courage", "Wisdom"],
-  },
-  {
-    id: 3,
-    title: "Up",
-    poster: "placeholder",
-    categories: ["Humanity"],
-  },
-];
+const movies: Movie[] = MovieCatalogue;
 
 export default function HomeScreen() {
   const [toggles, setToggles] = useState({
