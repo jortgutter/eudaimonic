@@ -1,21 +1,46 @@
 import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { MovieCatalogue } from "@/constants/dummycatalogue";
+//import { MovieCatalogue } from "@/constants/dummycatalogue";
 import { globalStyles } from "@/constants/globalStyles";
 import { Image } from "expo-image";
-import { useState } from "react";
+import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import tinycolor from "tinycolor2";
+import { getMovies, initDb } from "../../src/db/database";
 
-type Movie = {
-  id: string;
+
+type DbMovie = {
+  id: number;
   title: string;
-  poster: string;
-  categories: string[];
-  imdbRating: number | null;
+  year: number;
+  rating: number;
+  genre: string;
+  humanity: number;
+  courage: number;
+  justice: number;
+  purpose: number;
+  restraint: number;
+  wisdom: number;
 };
 
+type Trait =
+  | "humanity"
+  | "courage"
+  | "justice"
+  | "purpose"
+  | "restraint"
+  | "wisdom";
+
+function computeScore(movie: any, activeTraits: Trait[]): number {
+  if (activeTraits.length === 0) return 0;
+
+  const sum = activeTraits.reduce((acc, trait) => {
+    return acc + (movie[trait] ?? 0);
+  }, 0)
+
+  return sum/ activeTraits.length
+}
 //const movies: Movie[] = MovieCatalogue;
 
 /**
@@ -23,7 +48,7 @@ type Movie = {
  * When the real engine is ready, replace `recommendationScore` with the actual
  * output and remove the dummy generation below.
  */
-type RecommendedMovie = Movie & {
+type RecommendedMovie = DbMovie & {
   recommendationScore: number | null; // 0–100, null = not yet computed
 };
 
@@ -32,21 +57,20 @@ type RecommendedMovie = Movie & {
  * REPLACE THIS with the real recommendation engine output.
  * Kept deterministic (seeded by id) so the list doesn't shuffle on re-render.
  */
-function getDummyRecommendationScore(id: string): number {
-  // Simple deterministic hash: sum of char codes mod 100, mapped to 40–99
-  const hash = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return 40 + (hash % 60);
-}
+// function getDummyRecommendationScore(id: string): number {
+//   // Simple deterministic hash: sum of char codes mod 100, mapped to 40–99
+//   const hash = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+//   return 40 + (hash % 60);
+// }
 
 /**
  * Attaches dummy scores and placeholder IMDb ratings to catalogue movies.
  * REPLACE this function's body with a real data-fetching call when ready.
  */
-function buildRecommendedList(catalogue: Movie[]): RecommendedMovie[] {
+function buildRecommendedList(catalogue: DbMovie[]): RecommendedMovie[] {
   return catalogue.map((movie) => ({
     ...movie,
-    imdbRating: movie.imdbRating ?? null,
-    recommendationScore: getDummyRecommendationScore(movie.id),
+    imdbRating: movie.rating ?? null
   }));
 }
 
@@ -68,31 +92,52 @@ export default function HomeScreen() {
     Restraint: { state: false, deactColor: "#445", actColor: "#88a" },
     Courage: { state: false, deactColor: "#751", actColor: "#fa2" },
   });
-  
-  const activeCategories = Object.entries(toggles)
+
+  const [dbMovies, setDbMovies] = useState<DbMovie[]>([]);
+
+  useEffect(() => {
+    initDb();
+
+    const movies = getMovies();
+    setDbMovies(movies);
+
+    console.log(movies);
+  }, []);
+
+  const activeTraits:Trait[] = Object.entries(toggles)
     .filter(([_, value]) => value.state)
-    .map(([key, _]) => key);
+    .map(([key]) => key.toLowerCase() as Trait)
+
+  const enrichedMovies = dbMovies.map((m) => ({
+    ...m,
+    recommendationScore: computeScore(m, activeTraits),
+  }));
+
+
+  const sortedMovies = [...enrichedMovies].sort(
+    (a,b) => b.recommendationScore - a.recommendationScore
+  );
 
   // Build the full recommended list once (replace with useMemo + real fetch later)
-  const allRecommendedMovies: RecommendedMovie[] = buildRecommendedList(MovieCatalogue);
+  const allRecommendedMovies: RecommendedMovie[] = buildRecommendedList(dbMovies);
 
   // Filter by active category toggles; show all when none are active
-  const filteredMovies: RecommendedMovie[] =
-    activeCategories.length === 0
-      ? allRecommendedMovies
-      : allRecommendedMovies.filter((movie) =>
-          movie.categories.some((cat) => activeCategories.includes(cat))
-        );
+  // const filteredMovies: RecommendedMovie[] =
+  //   activeCategories.length === 0
+  //     ? allRecommendedMovies
+  //     : allRecommendedMovies.filter((movie) =>
+  //         movie.categories.some((cat) => activeCategories.includes(cat))
+  //       );
 
-  // Sort by recommendation score descending (nulls last)
-  const sortedMovies = [...filteredMovies].sort((a, b) => {
-    if (a.recommendationScore === null) return 1;
-    if (b.recommendationScore === null) return -1;
-    return b.recommendationScore - a.recommendationScore;
-  });
+  // // Sort by recommendation score descending (nulls last)
+  // const sortedMovies = [...filteredMovies].sort((a, b) => {
+  //   if (a.recommendationScore === null) return 1;
+  //   if (b.recommendationScore === null) return -1;
+  //   return b.recommendationScore - a.recommendationScore;
+  // });
 
   function toggle(key: keyof typeof toggles) {
-    console.log(activeCategories);
+    console.log(activeTraits);
     setToggles((prev) => ({
       ...prev,
       [key]: {
@@ -102,7 +147,7 @@ export default function HomeScreen() {
     }));
   }
 
-  console.log(activeCategories);
+  console.log(activeTraits);
 
   return (
     <ParallaxScrollView
@@ -181,14 +226,11 @@ export default function HomeScreen() {
                   <ThemedText type="subtitle" numberOfLines={1} ellipsizeMode="tail">
                     {item.title}
                   </ThemedText>
-                  <ThemedText style={globalStyles.categories} numberOfLines={1} ellipsizeMode="tail">
-                    {item.categories.join(", ")}
-                  </ThemedText>
                   {/* IMDb rating row */}
                   <View style={styles.imdbRow}>
                     <Text style={styles.imdbLabel}>IMDb</Text>
                     <Text style={styles.imdbValue}>
-                      {item.imdbRating !== null ? `${item.imdbRating}/10` : "—"}
+                      {item.rating !== null ? `${item.rating}/10` : "—"}
                     </Text>
                   </View>
                 </ThemedView>
