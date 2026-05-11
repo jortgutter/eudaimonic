@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   movieItem: {
     padding: 12,
     marginBottom: 8,
-    backgroundColor: "#222",
+    backgroundColor: "#777",
     borderRadius: 8,
   },
 });
