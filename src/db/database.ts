@@ -1,64 +1,95 @@
 
 import * as SQLite from 'expo-sqlite';
-import moviesData from '../data/movies.json';
-const db = SQLite.openDatabaseSync('movies.db');
+
+const db = SQLite.openDatabaseSync('movies1970-2000.db');
 
 export function initDb() {
-  db.execSync(`
-    CREATE TABLE IF NOT EXISTS movies (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT,
-      year INTEGER,
-      rating REAL,
-      genre TEXT,
-      humanity REAL,
-      courage REAL,
-      justice REAL,
-      purpose REAL,
-      restraint REAL,
-      wisdom REAL
-    );
-  `);
-  seedIfEmpty();
+  db.execSync(`PRAGMA journal_mode = WAL;`);
+  db.execSync(`PRAGMA synchronous = NORMAL;`);
 }
 
-function seedIfEmpty() {
+export type TraitOptions = {
+  Wisdom?: boolean;
+  Courage?: boolean;
+  Humanity?: boolean;
+  Justice?: boolean;
+  Temperance?: boolean;
+  Transcendence?: boolean;
+};
 
-  const result = db.getFirstSync(
-    'SELECT COUNT(*) as count FROM movies'
-  );
+export type ScoredMovie = {
+  id: number;
+  title: string;
+  summary: string;
+  image_url: string;
+  vote_average: number;
+  release_date: string;
+  adult: number;
+  match_score: number;
+  Humanity: number;
+  Wisdom: number;
+  Courage: number;
+  Temperance: number;
+  Transcendence: number;
+  Justice :number;
+};
 
-if (!result || result.count === 0) {
-    seedFromJson();
+export function getTopMoviesByTraits(
+  traits: TraitOptions
+): ScoredMovie[] {
+
+  const enabledColumns: string[] = [];
+
+  if (traits.Wisdom) {
+    enabledColumns.push(`COALESCE(ms."Wisdom", 0)`);
   }
-}
 
-function seedFromJson() {
-  for (const movie of moviesData) {
-    db.runSync(
-      `INSERT INTO movies 
-      (title, year, rating, genre, humanity, courage, justice, purpose, restraint, wisdom)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        movie.title,
-        movie.year,
-        movie.rating,
-        movie.genre,
-        movie.humanity,
-        movie.courage,
-        movie.justice,
-        movie.purpose,
-        movie.restraint,
-        movie.wisdom
-      ]
-    );
+  if (traits.Courage) {
+    enabledColumns.push(`COALESCE(ms."Courage", 0)`);
   }
-}
 
+  if (traits.Humanity) {
+    enabledColumns.push(`COALESCE(ms."Humanity", 0)`);
+  }
+
+  if (traits.Justice) {
+    enabledColumns.push(`COALESCE(ms."Justice", 0)`);
+  }
+
+  if (traits.Temperance) {
+    enabledColumns.push(`COALESCE(ms."Temperance", 0)`);
+  }
+
+  if (traits.Transcendence) {
+    enabledColumns.push(`COALESCE(ms."Transcendence", 0)`);
+  }
+
+  // No traits enabled
+  if (enabledColumns.length === 0) {
+    return [];
+  }
+
+  const sumExpr = enabledColumns.join(" + ");
+  const scoreExpression = `(${sumExpr}) / ${enabledColumns.length}`;
+
+  const query = `
+    SELECT
+      m.*,
+      ${scoreExpression} AS match_score
+    FROM movies m
+    JOIN movie_virtue_scores_wide ms
+      ON ms.movie_id = m.id
+    ORDER BY match_score DESC
+    LIMIT 20
+  `;
+
+  return db.getAllSync(query) as ScoredMovie[];
+}
 
 export function getMovies() {
   return db.getAllSync('SELECT * FROM movies');
 }
+
 
 export function getMovieById(id: number) {
   return db.getFirstSync(

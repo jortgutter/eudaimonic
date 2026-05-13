@@ -5,42 +5,46 @@ import { ThemedView } from "@/components/themed-view";
 import { globalStyles } from "@/constants/globalStyles";
 import { Image } from "expo-image";
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  FlatList,
+  Modal,
+  Pressable, StyleSheet, Text, TouchableOpacity, View
+} from "react-native";
 import tinycolor from "tinycolor2";
-import { getMovies, initDb } from "../../src/db/database";
+import { getTopMoviesByTraits, initDb, ScoredMovie, TraitOptions } from "../../src/db/database";
 
+// type DbMovie = {
+//   id: number;
+//   title: string;
+//   poster:string,
+//   year: number;
+//   rating: number;
+//   genre: string;
+//   humanity: number;
+//   courage: number;
+//   justice: number;
+//   purpose: number;
+//   restraint: number;
+//   wisdom: number;
+// };
 
-type DbMovie = {
-  id: number;
-  title: string;
-  year: number;
-  rating: number;
-  genre: string;
-  humanity: number;
-  courage: number;
-  justice: number;
-  purpose: number;
-  restraint: number;
-  wisdom: number;
-};
+// type Trait =
+//   | "humanity"
+//   | "courage"
+//   | "justice"
+//   | "purpose"
+//   | "restraint"
+//   | "wisdom";
 
-type Trait =
-  | "humanity"
-  | "courage"
-  | "justice"
-  | "purpose"
-  | "restraint"
-  | "wisdom";
+// function computeScore(movie: any, activeTraits: TraitOptions[]): number {
+//   if (activeTraits.length === 0) return 0;
 
-function computeScore(movie: any, activeTraits: Trait[]): number {
-  if (activeTraits.length === 0) return 0;
+//   const sum = activeTraits.reduce((acc, trait) => {
+//     return acc + (movie[trait] ?? 0);
+//   }, 0)
 
-  const sum = activeTraits.reduce((acc, trait) => {
-    return acc + (movie[trait] ?? 0);
-  }, 0)
-
-  return sum/ activeTraits.length
-}
+//   return sum/ activeTraits.length
+// }
 //const movies: Movie[] = MovieCatalogue;
 
 /**
@@ -48,7 +52,7 @@ function computeScore(movie: any, activeTraits: Trait[]): number {
  * When the real engine is ready, replace `recommendationScore` with the actual
  * output and remove the dummy generation below.
  */
-type RecommendedMovie = DbMovie & {
+type RecommendedMovie = ScoredMovie & {
   recommendationScore: number | null; // 0–100, null = not yet computed
 };
 
@@ -67,10 +71,10 @@ type RecommendedMovie = DbMovie & {
  * Attaches dummy scores and placeholder IMDb ratings to catalogue movies.
  * REPLACE this function's body with a real data-fetching call when ready.
  */
-function buildRecommendedList(catalogue: DbMovie[]): RecommendedMovie[] {
+function buildRecommendedList(catalogue: ScoredMovie[]): RecommendedMovie[] {
   return catalogue.map((movie) => ({
     ...movie,
-    imdbRating: movie.rating ?? null
+    vote_average: movie.vote_average ?? null
   }));
 }
 
@@ -84,6 +88,19 @@ function scoreColor(score: number): string {
 
 export default function HomeScreen() {
 
+  function openInfoOverlay(movie: ScoredMovie) {
+    setSelectedMovie(movie);
+    setOverlayVisible(true);
+  }
+
+  function closeInfoOverlay() {
+    setOverlayVisible(false);
+    setSelectedMovie(null);
+  }
+
+  const [selectedMovie, setSelectedMovie] = useState<ScoredMovie | null>(null);
+  const [overlayVisible, setOverlayVisible] = useState(false);
+
   const [toggles, setToggles] = useState({
     Wisdom: { state: false, deactColor: "#457", actColor: "#9af" },
     Humanity: { state: false, deactColor: "#172", actColor: "#2e4" },
@@ -93,33 +110,39 @@ export default function HomeScreen() {
     Courage: { state: false, deactColor: "#751", actColor: "#fa2" },
   });
 
-  const [dbMovies, setDbMovies] = useState<DbMovie[]>([]);
+  const [scoredMovies, setDbMovies] = useState<ScoredMovie[]>([]);
 
-  useEffect(() => {
-    initDb();
+  const activeTraits: TraitOptions = Object.entries(toggles).reduce(
+    (acc, [key, value]) => {
+      if (value.state) {
+        acc[key as keyof TraitOptions] = true;
+      }
+      return acc;
+    },
+    {} as TraitOptions
+  );
 
-    const movies = getMovies();
-    setDbMovies(movies);
+useEffect(() => {
+  initDb();
 
-    console.log(movies);
-  }, []);
-
-  const activeTraits:Trait[] = Object.entries(toggles)
-    .filter(([_, value]) => value.state)
-    .map(([key]) => key.toLowerCase() as Trait)
-
-  const enrichedMovies = dbMovies.map((m) => ({
-    ...m,
-    recommendationScore: computeScore(m, activeTraits),
-  }));
+  const movies = getTopMoviesByTraits(activeTraits);
+  setDbMovies(movies);
+}, [activeTraits]);
 
 
-  const sortedMovies = [...enrichedMovies].sort(
-    (a,b) => b.recommendationScore - a.recommendationScore
+
+  // const enrichedMovies = ScoredMovies.map((m) => ({
+  //   ...m,
+  //   recommendationScore: computeScore(m, activeTraits),
+  // }));
+
+
+  const sortedMovies = [...scoredMovies].sort(
+    (a,b) => b.match_score - a.match_score
   );
 
   // Build the full recommended list once (replace with useMemo + real fetch later)
-  const allRecommendedMovies: RecommendedMovie[] = buildRecommendedList(dbMovies);
+  const allRecommendedMovies: RecommendedMovie[] = buildRecommendedList(scoredMovies);
 
   // Filter by active category toggles; show all when none are active
   // const filteredMovies: RecommendedMovie[] =
@@ -148,8 +171,57 @@ export default function HomeScreen() {
   }
 
   console.log(activeTraits);
+  
 
   return (
+    <>
+    <Modal
+      visible={overlayVisible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={closeInfoOverlay}
+    >
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalContent}>
+          {selectedMovie && (
+            <>
+              <Image
+                source={{ uri: selectedMovie.image_url }}
+                style={styles.modalPoster}
+              />
+
+              <Text style={styles.modalTitle}>
+                {selectedMovie.title}
+              </Text>
+
+              <Text style={styles.modalYear}>
+                {selectedMovie.release_date}
+              </Text>
+
+              <Text style={styles.modalRating}>
+                IMDb: {selectedMovie.vote_average}/10
+              </Text>
+
+              <View style={styles.traitsContainer}>
+                <Text>Humanity: {selectedMovie.Humanity}</Text>
+                <Text>Courage: {selectedMovie.Courage}</Text>
+                <Text>Justice: {selectedMovie.Justice}</Text>
+                <Text>Transcendence: {selectedMovie.Transcendence}</Text>
+                <Text>Temperance: {selectedMovie.Temperance}</Text>
+                <Text>Wisdom: {selectedMovie.Wisdom}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={closeInfoOverlay}
+              >
+                <Text style={styles.closeButtonText}>Close</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
     <ParallaxScrollView
       headerBackgroundColor={{ light: "#A1CEDC", dark: "#1D3D47" }}
       headerImage={
@@ -160,7 +232,7 @@ export default function HomeScreen() {
       }
     >
       <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">EudAImonic</ThemedText>
+        <ThemedText type="title">EudAImonic Movie Recommender</ThemedText>
       </ThemedView>
 
       {/* Category filter toggles */}
@@ -202,14 +274,19 @@ export default function HomeScreen() {
 
       <FlatList
         data={sortedMovies}
-        keyExtractor={(item) => item.id}
+        windowSize={5}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        removeClippedSubviews={true}
+        keyExtractor={(item) => item.id.toString()}
         scrollEnabled={false} // disable internal scrolling to let ParallaxScrollView handle it
         contentContainerStyle={globalStyles.listContent}
         renderItem={({ item, index }) => (
           <TouchableOpacity 
+          
           style={globalStyles.movieItemContainer}
           activeOpacity={0.7}
-          // onPress={() => openInfoOverlay(item)}  // wire up when ready
+          onPress={() => openInfoOverlay(item)}  // wire up when ready
           >
             <ThemedView style={globalStyles.movieItem}>
               {/* Rank Badge */}
@@ -220,7 +297,7 @@ export default function HomeScreen() {
               {/* Movie Info + Poster*/}
               <ThemedView style={globalStyles.movieContent}>
                 <ThemedView style={globalStyles.posterPlaceholder}>
-                  <ThemedText>Poster</ThemedText>
+                  <Image source={{ uri: item.image_url }} style={styles.modalPoster} />
                 </ThemedView>
                 <ThemedView style={globalStyles.movieInfo}>
                   <ThemedText type="subtitle" numberOfLines={1} ellipsizeMode="tail">
@@ -230,7 +307,7 @@ export default function HomeScreen() {
                   <View style={styles.imdbRow}>
                     <Text style={styles.imdbLabel}>IMDb</Text>
                     <Text style={styles.imdbValue}>
-                      {item.rating !== null ? `${item.rating}/10` : "—"}
+                      {item.vote_average !== null ? `${item.vote_average}/10` : "—"}
                     </Text>
                   </View>
                 </ThemedView>
@@ -238,15 +315,15 @@ export default function HomeScreen() {
               {/* Recommendation score column */}
               <View style={styles.scoreSection}>
                 <ThemedText style={styles.scoreLabel}>Match</ThemedText>
-                {item.recommendationScore !== null ? (
+                {item.match_score !== null ? (
                   <>
                     <ThemedText
                       style={[
                         styles.scoreValue,
-                        { color: scoreColor(item.recommendationScore) },
+                        { color: scoreColor(item.match_score) },
                       ]}
                     >
-                      {item.recommendationScore}%
+                      {item.match_score}%
                     </ThemedText>
                     {/* Visual bar */}
                     <View style={styles.scoreBarTrack}>
@@ -254,8 +331,8 @@ export default function HomeScreen() {
                         style={[
                           styles.scoreBarFill,
                           {
-                            width: `${item.recommendationScore}%`,
-                            backgroundColor: scoreColor(item.recommendationScore),
+                            width: `${item.match_score}%`,
+                            backgroundColor: scoreColor(item.match_score),
                           },
                         ]}
                       />
@@ -270,10 +347,71 @@ export default function HomeScreen() {
         )}
       />
     </ParallaxScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+
+  modalContent: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: "#222",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+  },
+
+  modalPoster: {
+    width: 180,
+    height: 270,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "white",
+    textAlign: "center",
+  },
+
+  modalYear: {
+    color: "#bbb",
+    marginTop: 4,
+  },
+
+  modalRating: {
+    color: "#f5c518",
+    marginTop: 8,
+    fontSize: 16,
+  },
+
+  traitsContainer: {
+    marginTop: 20,
+    gap: 6,
+    width: "100%",
+  },
+
+  closeButton: {
+    marginTop: 24,
+    backgroundColor: "#444",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+
+  closeButtonText: {
+    color: "white",
+    fontWeight: "600",
+  },
   // Layout + Header
   titleContainer: {
     flexDirection: "row",
@@ -299,7 +437,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   button: {
-    width: "30%",
+    width: "45%",
     margin: "1.5%",
     padding: 20,
     borderRadius: 10,

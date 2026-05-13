@@ -1,6 +1,7 @@
 [
   {
     "title": "The Shawshank Redemption",
+    "poster": "https://image.tmdb.org/t/p/w500/abc123.jpg",
     "year": 1994,
     "rating": 9.3,
     "genre": "Drama",
@@ -13,6 +14,7 @@
   },
   {
     "title": "The Godfather",
+    "poster": "",
     "year": 1972,
     "rating": 9.2,
     "genre": "Crime",
@@ -25,6 +27,7 @@
   },
   {
     "title": "The Dark Knight",
+    "poster": "",
     "year": 2008,
     "rating": 9.0,
     "genre": "Action",
