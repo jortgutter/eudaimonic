@@ -1,16 +1,12 @@
 import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-//import { MovieCatalogue } from "@/constants/dummycatalogue";
-import { globalStyles } from "@/constants/globalStyles";
 import { Image } from "expo-image";
 import { useEffect, useState } from 'react';
 import {
-  FlatList,
   Modal,
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
-import tinycolor from "tinycolor2";
 import { getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
 
 // type DbMovie = {
@@ -225,7 +221,7 @@ useEffect(() => {
         {Object.entries(toggles).map(([key, value]) => {
           const bg = value.state
             ? value.actColor
-            : tinycolor(value.actColor).desaturate(50).toHexString();
+            : value.deactColor;
           return (
             <Pressable
               key={key}
@@ -257,71 +253,78 @@ useEffect(() => {
         ))}
       </View> */}
 
-      <View style={globalStyles.listContent}>
-        {sortedMovies.map((item, index) => (
-          <TouchableOpacity
-            key={item.id}
-            style={globalStyles.movieItemContainer}
-            activeOpacity={0.7}
-            onPress={() => openInfoOverlay(item)}
-          >
-            <ThemedView style={globalStyles.movieItem}>
-              {/* Rank Badge */}
-              <View style={styles.rankBadge}>
-                <ThemedText style={styles.rankText}>#{index + 1}</ThemedText>
-              </View>
+      <View style={styles.recommendationsSection}>
+        <View style={styles.recommendationsHeader}>
+          <View>
+            <ThemedText type="subtitle">Recommendations</ThemedText>
+            <Text style={styles.recommendationsSubtext}>
+              {sortedMovies.length} matching movies
+            </Text>
+          </View>
 
-              {/* Movie Info + Poster*/}
-              <ThemedView style={globalStyles.movieContent}>
-                <ThemedView style={globalStyles.posterPlaceholder}>
-                  <Image source={{ uri: item.image_url }} style={styles.listPoster} />
-                </ThemedView>
-                <ThemedView style={globalStyles.movieInfo}>
-                  <ThemedText type="subtitle" numberOfLines={1} ellipsizeMode="tail">
-                    {item.title}
-                  </ThemedText>
-                  {/* IMDb rating row */}
-                  <View style={styles.imdbRow}>
-                    <Text style={styles.imdbLabel}>IMDb</Text>
-                    <Text style={styles.imdbValue}>
-                      {item.vote_average !== null ? `${item.vote_average}/10` : "—"}
-                    </Text>
+          <View style={styles.recommendationsPill}>
+            <Text style={styles.recommendationsPillText}>
+              {Object.entries(toggles).filter(([, value]) => value.state).length} virtues used
+            </Text>
+          </View>
+        </View>
+
+        {sortedMovies.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateTitle}>Choose a virtue</Text>
+            <Text style={styles.emptyStateText}>
+              Tap one or more virtues above to load movie recommendations.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.recommendationList}>
+            {sortedMovies.map((item, index) => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.recommendationCard}
+                activeOpacity={0.85}
+                onPress={() => openInfoOverlay(item)}
+              >
+                <View style={styles.cardPosterWrap}>
+                  <Image source={{ uri: item.image_url }} style={styles.cardPoster} />
+                  <View style={styles.cardRankBadge}>
+                    <Text style={styles.cardRankText}>#{index + 1}</Text>
                   </View>
-                </ThemedView>
-              </ThemedView>
-              {/* Recommendation score column */}
-              <View style={styles.scoreSection}>
-                <ThemedText style={styles.scoreLabel}>Match</ThemedText>
-                {item.match_score !== null ? (
-                  <>
-                    <ThemedText
-                      style={[
-                        styles.scoreValue,
-                        { color: scoreColor(item.match_score) },
-                      ]}
-                    >
-                      {item.match_score}%
+                </View>
+
+                <View style={styles.cardBody}>
+                  <View style={styles.cardTopRow}>
+                    <ThemedText type="subtitle" numberOfLines={2}>
+                      {item.title}
                     </ThemedText>
-                    {/* Visual bar */}
-                    <View style={styles.scoreBarTrack}>
-                      <View
-                        style={[
-                          styles.scoreBarFill,
-                          {
-                            width: `${item.match_score}%`,
-                            backgroundColor: scoreColor(item.match_score),
-                          },
-                        ]}
-                      />
+                    <View style={styles.matchPill}>
+                      <Text style={[styles.matchPillText, { color: scoreColor(item.match_score) }]}>
+                        {item.match_score}%
+                      </Text>
                     </View>
-                  </>
-                ) : (
-                  <ThemedText style={styles.scoreValue}>—</ThemedText>
-                )}
-              </View>
-            </ThemedView>
-          </TouchableOpacity>
-        ))}
+                  </View>
+
+                  <Text style={styles.cardMeta}>
+                    IMDb {item.vote_average !== null ? `${item.vote_average}/10` : "—"}
+                    {item.release_date ? ` • ${item.release_date}` : ""}
+                  </Text>
+
+                  <View style={styles.scoreBarTrack}>
+                    <View
+                      style={[
+                        styles.scoreBarFill,
+                        {
+                          width: `${item.match_score}%`,
+                          backgroundColor: scoreColor(item.match_score),
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
     </ParallaxScrollView>
     </>
@@ -460,69 +463,114 @@ const styles = StyleSheet.create({
     color: "black",
   },
 
-  // Movie list Items
-  movieItem: {
-    padding: 12,
-    marginBottom: 8,
-    backgroundColor: "#222",
-    borderRadius: 8,
+  recommendationsSection: {
+    gap: 12,
   },
-
-  rankBadge: {
-    width: 28,
-    alignItems: "center",
-    flexShrink: 0,
-  },
-  rankText: {
-    fontSize: 11,
-    opacity: 0.5,
-    fontWeight: "600",
-  },
-  imdbRow: {
+  recommendationsHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    marginTop: 2,
+    justifyContent: "space-between",
+    gap: 12,
   },
-  imdbLabel: {
+  recommendationsSubtext: {
+    marginTop: 4,
+    opacity: 0.7,
+    fontSize: 12,
+  },
+  recommendationsPill: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  recommendationsPillText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  emptyState: {
+    paddingVertical: 28,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    gap: 8,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  emptyStateText: {
+    opacity: 0.75,
+    lineHeight: 20,
+  },
+  recommendationList: {
+    gap: 12,
+  },
+  recommendationCard: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  cardPosterWrap: {
+    width: 72,
+    height: 108,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  cardPoster: {
+    width: "100%",
+    height: "100%",
+  },
+  cardRankBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  cardRankText: {
+    color: "white",
     fontSize: 10,
     fontWeight: "700",
-    color: "#f5c518",       // IMDb yellow — intentional hardcode
-    letterSpacing: 0.5,
   },
-  imdbValue: {
-    fontSize: 12,
-    color: "#f5c518",
-    fontWeight: "500",
-  },
-
-  // Recommendation score column
-  scoreSection: {
-    alignItems: "center",
-    paddingHorizontal: 8,
-    width: 70,
-    height: "100%",
+  cardBody: {
+    flex: 1,
+    gap: 8,
     justifyContent: "center",
-    gap: 4,
   },
-  scoreLabel: {
-    fontSize: 11,
-    opacity: 0.6,
-    letterSpacing: 0.5,
+  cardTopRow: {
+    gap: 8,
   },
-  scoreValue: {
-    fontSize: 16,
-    fontWeight: "bold",
+  matchPill: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  matchPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  cardMeta: {
+    opacity: 0.75,
+    fontSize: 12,
   },
   scoreBarTrack: {
-    width: 48,
-    height: 4,
-    borderRadius: 2,
+    width: "100%",
+    height: 6,
+    borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.15)",
     overflow: "hidden",
   },
   scoreBarFill: {
     height: "100%",
-    borderRadius: 2,
+    borderRadius: 999,
   },
 });
