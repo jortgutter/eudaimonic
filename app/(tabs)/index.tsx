@@ -11,7 +11,7 @@ import {
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
 import tinycolor from "tinycolor2";
-import { getTopMoviesByTraits, initDb, ScoredMovie, TraitOptions } from "../../src/db/database";
+import { getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
 
 // type DbMovie = {
 //   id: number;
@@ -47,36 +47,6 @@ import { getTopMoviesByTraits, initDb, ScoredMovie, TraitOptions } from "../../s
 // }
 //const movies: Movie[] = MovieCatalogue;
 
-/**
- * RecommendedMovie wraps a catalogue movie with a computed recommendation score.
- * When the real engine is ready, replace `recommendationScore` with the actual
- * output and remove the dummy generation below.
- */
-type RecommendedMovie = ScoredMovie & {
-  recommendationScore: number | null; // 0–100, null = not yet computed
-};
-
-/**
- * Generates a fake recommendation score for a movie.
- * REPLACE THIS with the real recommendation engine output.
- * Kept deterministic (seeded by id) so the list doesn't shuffle on re-render.
- */
-// function getDummyRecommendationScore(id: string): number {
-//   // Simple deterministic hash: sum of char codes mod 100, mapped to 40–99
-//   const hash = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-//   return 40 + (hash % 60);
-// }
-
-/**
- * Attaches dummy scores and placeholder IMDb ratings to catalogue movies.
- * REPLACE this function's body with a real data-fetching call when ready.
- */
-function buildRecommendedList(catalogue: ScoredMovie[]): RecommendedMovie[] {
-  return catalogue.map((movie) => ({
-    ...movie,
-    vote_average: movie.vote_average ?? null
-  }));
-}
 
 /** Maps a 0–100 recommendation score to a colour. */
 function scoreColor(score: number): string {
@@ -123,10 +93,28 @@ export default function HomeScreen() {
   );
 
 useEffect(() => {
-  initDb();
+  let cancelled = false;
 
-  const movies = getTopMoviesByTraits(activeTraits);
-  setDbMovies(movies);
+  (async () => {
+    try {
+      const movies = await getTopMoviesByTraits(activeTraits);
+      if (!cancelled) {
+        // Log how many movies were loaded to help debug rendering on devices
+        // eslint-disable-next-line no-console
+        console.log('Loaded top movies count:', movies.length, movies.slice(0,3).map(m=>m.title));
+        setDbMovies(movies);
+      }
+    } catch (error) {
+      console.error("Failed to load movies from backend", error);
+      if (!cancelled) {
+        setDbMovies([]);
+      }
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
 }, [activeTraits]);
 
 
@@ -140,9 +128,6 @@ useEffect(() => {
   const sortedMovies = [...scoredMovies].sort(
     (a,b) => b.match_score - a.match_score
   );
-
-  // Build the full recommended list once (replace with useMemo + real fetch later)
-  const allRecommendedMovies: RecommendedMovie[] = buildRecommendedList(scoredMovies);
 
   // Filter by active category toggles; show all when none are active
   // const filteredMovies: RecommendedMovie[] =
@@ -272,21 +257,13 @@ useEffect(() => {
         ))}
       </View> */}
 
-      <FlatList
-        data={sortedMovies}
-        windowSize={5}
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
-        removeClippedSubviews={true}
-        keyExtractor={(item) => item.id.toString()}
-        scrollEnabled={false} // disable internal scrolling to let ParallaxScrollView handle it
-        contentContainerStyle={globalStyles.listContent}
-        renderItem={({ item, index }) => (
-          <TouchableOpacity 
-          
-          style={globalStyles.movieItemContainer}
-          activeOpacity={0.7}
-          onPress={() => openInfoOverlay(item)}  // wire up when ready
+      <View style={globalStyles.listContent}>
+        {sortedMovies.map((item, index) => (
+          <TouchableOpacity
+            key={item.id}
+            style={globalStyles.movieItemContainer}
+            activeOpacity={0.7}
+            onPress={() => openInfoOverlay(item)}
           >
             <ThemedView style={globalStyles.movieItem}>
               {/* Rank Badge */}
@@ -297,7 +274,7 @@ useEffect(() => {
               {/* Movie Info + Poster*/}
               <ThemedView style={globalStyles.movieContent}>
                 <ThemedView style={globalStyles.posterPlaceholder}>
-                  <Image source={{ uri: item.image_url }} style={styles.modalPoster} />
+                  <Image source={{ uri: item.image_url }} style={styles.listPoster} />
                 </ThemedView>
                 <ThemedView style={globalStyles.movieInfo}>
                   <ThemedText type="subtitle" numberOfLines={1} ellipsizeMode="tail">
@@ -344,8 +321,8 @@ useEffect(() => {
               </View>
             </ThemedView>
           </TouchableOpacity>
-        )}
-      />
+        ))}
+      </View>
     </ParallaxScrollView>
     </>
   );
@@ -374,6 +351,11 @@ const styles = StyleSheet.create({
     height: 270,
     borderRadius: 12,
     marginBottom: 16,
+  },
+  listPoster: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 4,
   },
 
   modalTitle: {

@@ -1,12 +1,11 @@
 
-import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
-const db = SQLite.openDatabaseSync('movies1970-2000.db');
+const DEFAULT_HOST = 'https://eudaimonic.arthuridema.nl';
 
-export function initDb() {
-  db.execSync(`PRAGMA journal_mode = WAL;`);
-  db.execSync(`PRAGMA synchronous = NORMAL;`);
-}
+const API_BASE_URL = DEFAULT_HOST;
+
+const API_V1_BASE = `${API_BASE_URL}/api/v1`;
 
 export type TraitOptions = {
   Wisdom?: boolean;
@@ -22,7 +21,7 @@ export type ScoredMovie = {
   title: string;
   summary: string;
   image_url: string;
-  vote_average: number;
+  vote_average: number | null;
   release_date: string;
   adult: number;
   match_score: number;
@@ -31,71 +30,161 @@ export type ScoredMovie = {
   Courage: number;
   Temperance: number;
   Transcendence: number;
-  Justice :number;
+  Justice: number;
 };
 
-export function getTopMoviesByTraits(
-  traits: TraitOptions
-): ScoredMovie[] {
+export type CatalogMovie = {
+  id: number;
+  title: string;
+  summary?: string | null;
+  image_url?: string | null;
+  vote_average?: number | null;
+  release_date?: string | null;
+  adult?: boolean;
+  genres?: string[];
+};
 
-  const enabledColumns: string[] = [];
+type VirtueScoresResponse = {
+  virtue_scores?: {
+    wisdom?: number | null;
+    courage?: number | null;
+    humanity?: number | null;
+    justice?: number | null;
+    temperance?: number | null;
+    transcendence?: number | null;
+  };
+};
 
-  if (traits.Wisdom) {
-    enabledColumns.push(`COALESCE(ms."Wisdom", 0)`);
+export type VirtueScores = {
+  wisdom: number;
+  courage: number;
+  humanity: number;
+  justice: number;
+  temperance: number;
+  transcendence: number;
+};
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch (err) {
+    const msg = `Network error when fetching ${url}: ${err}`;
+    // eslint-disable-next-line no-console
+    console.error(msg);
+    throw new Error(msg);
   }
 
-  if (traits.Courage) {
-    enabledColumns.push(`COALESCE(ms."Courage", 0)`);
+  if (!response.ok) {
+    const text = await response.text().catch(() => '<no body>');
+    const msg = `Request failed (${response.status}) for ${url}: ${text}`;
+    // eslint-disable-next-line no-console
+    console.error(msg);
+    throw new Error(msg);
   }
 
-  if (traits.Humanity) {
-    enabledColumns.push(`COALESCE(ms."Humanity", 0)`);
-  }
-
-  if (traits.Justice) {
-    enabledColumns.push(`COALESCE(ms."Justice", 0)`);
-  }
-
-  if (traits.Temperance) {
-    enabledColumns.push(`COALESCE(ms."Temperance", 0)`);
-  }
-
-  if (traits.Transcendence) {
-    enabledColumns.push(`COALESCE(ms."Transcendence", 0)`);
-  }
-
-  // No traits enabled
-  if (enabledColumns.length === 0) {
-    return [];
-  }
-
-  const sumExpr = enabledColumns.join(" + ");
-  const scoreExpression = `(${sumExpr}) / ${enabledColumns.length}`;
-
-  const query = `
-    SELECT
-      m.*,
-      ${scoreExpression} AS match_score
-    FROM movies m
-    JOIN movie_virtue_scores_wide ms
-      ON ms.movie_id = m.id
-    ORDER BY match_score DESC
-    LIMIT 20
-  `;
-
-  return db.getAllSync(query) as ScoredMovie[];
+  return (await response.json()) as T;
 }
 
-export function getMovies() {
-  return db.getAllSync('SELECT * FROM movies');
+export async function getCatalogMovies(limit = 100): Promise<CatalogMovie[]> {
+  return fetchJson<CatalogMovie[]>(`${API_V1_BASE}/movies?skip=0&limit=${limit}`);
 }
 
-
-export function getMovieById(id: number) {
-  return db.getFirstSync(
-    'SELECT * FROM movies WHERE id = ?',
-    [id]
+export async function getMovieVirtueScores(movieId: number): Promise<VirtueScores> {
+  const response = await fetchJson<VirtueScoresResponse>(
+    `${API_V1_BASE}/movies/${movieId}/virtue-scores`
   );
 
+  const scores = response.virtue_scores ?? {};
+  return {
+    wisdom: scores.wisdom ?? 0,
+    courage: scores.courage ?? 0,
+    humanity: scores.humanity ?? 0,
+    justice: scores.justice ?? 0,
+    temperance: scores.temperance ?? 0,
+    transcendence: scores.transcendence ?? 0,
+  };
+}
 
+export type ChatRequest = {
+  message: string;
+  user_id?: number | null;
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+};
+
+export type ChatResponse = {
+  reply: string;
+  model: string;
+};
+
+export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
+  return fetchJson<ChatResponse>(`${API_V1_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+}
+
+function calculateMatchScore(movie: ScoredMovie, traits: TraitOptions): number {
+  const vals: number[] = [];
+  if (traits.Wisdom) vals.push(movie.Wisdom ?? 0);
+  if (traits.Courage) vals.push(movie.Courage ?? 0);
+  if (traits.Humanity) vals.push(movie.Humanity ?? 0);
+  if (traits.Justice) vals.push(movie.Justice ?? 0);
+  if (traits.Temperance) vals.push(movie.Temperance ?? 0);
+  if (traits.Transcendence) vals.push(movie.Transcendence ?? 0);
+
+  if (vals.length === 0) return 0;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100);
+}
+
+export async function getTopMoviesByTraits(
+  traits: TraitOptions
+): Promise<ScoredMovie[]> {
+
+  const hasEnabledTraits = Object.values(traits).some(Boolean);
+  if (!hasEnabledTraits) return [];
+
+  const movies = await fetchJson<CatalogMovie[]>(`${API_V1_BASE}/movies?skip=0&limit=100`);
+
+  const scoredMovies = await Promise.all(
+    movies.map(async (movie) => {
+      let virtueScores: VirtueScoresResponse['virtue_scores'] = {};
+
+      try {
+        const scoresResponse = await fetchJson<VirtueScoresResponse>(
+          `${API_V1_BASE}/movies/${movie.id}/virtue-scores`
+        );
+        virtueScores = scoresResponse.virtue_scores ?? {};
+      } catch {
+        virtueScores = {};
+      }
+
+      const mappedMovie: ScoredMovie = {
+        id: movie.id,
+        title: movie.title,
+        summary: movie.summary ?? '',
+        image_url: movie.image_url ?? '',
+        vote_average: movie.vote_average ?? null,
+        release_date: movie.release_date ?? '',
+        adult: movie.adult ? 1 : 0,
+        match_score: 0,
+        Humanity: virtueScores.humanity ?? 0,
+        Wisdom: virtueScores.wisdom ?? 0,
+        Courage: virtueScores.courage ?? 0,
+        Temperance: virtueScores.temperance ?? 0,
+        Transcendence: virtueScores.transcendence ?? 0,
+        Justice: virtueScores.justice ?? 0,
+      };
+
+      return {
+        ...mappedMovie,
+        match_score: calculateMatchScore(mappedMovie, traits),
+      };
+    })
+  );
+
+  return scoredMovies.sort((a, b) => b.match_score - a.match_score).slice(0, 20);
 }

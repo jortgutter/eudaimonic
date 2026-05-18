@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.lab.eudaimonic"
     },
     "web": {
       "output": "static",
@@ -39,11 +40,18 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7f89c8f2-6a90-4611-bd4d-465b9e91baec"
+      }
     }
   }
 }

@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { Image } from "expo-image";
+import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Modal,
   StyleSheet,
@@ -10,96 +12,185 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { MovieCatalogue, extractMovieDisplayInfo } from "@/constants/dummycatalogue";
 import { globalStyles } from "@/constants/globalStyles";
+import {
+  CatalogMovie,
+  getCatalogMovies,
+  getMovieVirtueScores,
+  VirtueScores,
+} from "../../src/db/database";
+import { loadUserInfo, saveUserInfo } from "../../src/storage/userinfo";
 
+type RatingsMap = Record<string, number>;
+
+const EMPTY_VIRTUE_SCORES: VirtueScores = {
+  wisdom: 0,
+  courage: 0,
+  humanity: 0,
+  justice: 0,
+  temperance: 0,
+  transcendence: 0,
+};
+
+const VIRTUE_META: Array<{ key: keyof VirtueScores; label: string; color: string }> = [
+  { key: "wisdom", label: "Wisdom", color: "#4A90E2" },
+  { key: "courage", label: "Courage", color: "#F5A623" },
+  { key: "humanity", label: "Humanity", color: "#7ED321" },
+  { key: "justice", label: "Justice", color: "#BD10E0" },
+  { key: "temperance", label: "Temperance", color: "#50E3C2" },
+  { key: "transcendence", label: "Transcendence", color: "#E94E77" },
+];
+
+const VIRTUE_COLUMNS = [VIRTUE_META.slice(0, 3), VIRTUE_META.slice(3, 6)];
+
+function toPercent(value: number): number {
+  const raw = value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
 
 export default function WatchHistoryScreen() {
-  const [movies, setMovies] = useState<any[]>([]);
+  const [catalogMovies, setCatalogMovies] = useState<CatalogMovie[]>([]);
+  const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [ratings, setRatings] = useState<{ [movieId: string]: number }>({});
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [ratings, setRatings] = useState<RatingsMap>({});
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [showRatingOverlay, setShowRatingOverlay] = useState(false);
-  const [selectedMovieForRating, setSelectedMovieForRating] = useState<any>(null);
+  const [selectedMovieForRating, setSelectedMovieForRating] = useState<CatalogMovie | null>(null);
   const [showInfoOverlay, setShowInfoOverlay] = useState(false);
-  const [selectedMovieForInfo, setSelectedMovieForInfo] = useState<any>(null);
+  const [selectedMovieForInfo, setSelectedMovieForInfo] = useState<CatalogMovie | null>(null);
+  const [selectedMovieVirtues, setSelectedMovieVirtues] = useState<VirtueScores>(EMPTY_VIRTUE_SCORES);
+  const [isVirtueLoading, setIsVirtueLoading] = useState(false);
   const [watchHistorySearchQuery, setWatchHistorySearchQuery] = useState("");
   const [addMovieSearchQuery, setAddMovieSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Filter movies based on search query (matches title or categories)
-  const searchMovies = (movies: any[], query: string): any[] => {
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const [movies, userInfo] = await Promise.all([getCatalogMovies(100), loadUserInfo()]);
+
+        if (!mounted) return;
+
+        setCatalogMovies(movies);
+        setWatchedMovieIds(userInfo.watchedMovieIds);
+        setRatings(userInfo.ratings);
+      } catch (error) {
+        console.error("Failed to load watch history data", error);
+        if (!mounted) return;
+        setLoadError("Could not load movies from backend.");
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const watchedMovies = useMemo(() => {
+    const watchedSet = new Set(watchedMovieIds);
+    return catalogMovies.filter((movie) => watchedSet.has(movie.id));
+  }, [catalogMovies, watchedMovieIds]);
+
+  const availableMovies = useMemo(() => {
+    const watchedSet = new Set(watchedMovieIds);
+    return catalogMovies.filter((movie) => !watchedSet.has(movie.id));
+  }, [catalogMovies, watchedMovieIds]);
+
+  async function persistUserInfo(nextIds: number[], nextRatings: RatingsMap) {
+    await saveUserInfo({ watchedMovieIds: nextIds, ratings: nextRatings });
+  }
+
+  const searchMovies = (movies: CatalogMovie[], query: string): CatalogMovie[] => {
     if (!query.trim()) return movies;
 
-    const lowerQuery = query.toLowerCase();                               // Case-insensitive search
+    const lowerQuery = query.toLowerCase();
     return movies.filter((movie) => {
-      const titleMatch = movie.title.toLowerCase().includes(lowerQuery);  // Match against title
-      const categoryMatch = movie.categories.some((cat: string) =>
-        cat.toLowerCase().includes(lowerQuery)                            // Match against any category
+      const titleMatch = movie.title.toLowerCase().includes(lowerQuery);
+      const genreMatch = (movie.genres ?? []).some((genre) =>
+        genre.toLowerCase().includes(lowerQuery)
       );
-      return titleMatch || categoryMatch;                                 // Include movie if it either matches in title or category
+      return titleMatch || genreMatch;
     });
   };
 
-  // Open context menu for a specific movie at the tap position
-  const openMenu = (movieId: string, event: any) => {
+  const openMenu = (movieId: number, event: any) => {
     const { pageX, pageY } = event.nativeEvent;
     setMenuPosition({ x: pageX, y: pageY });
     setOpenMenuId(movieId);
   };
 
-  // Get movies that are not yet in the watch history (for adding new ones)
-  const getAvailableMovies = () => {
-    const historyIds = new Set(movies.map((m) => m.id));
-    return MovieCatalogue.filter((movie) => !historyIds.has(movie.id));
-  };
-
-  // Add movie to history
-  const addMovieFromCatalogue = (catalogueMovie: any) => {
-    const displayInfo = extractMovieDisplayInfo(catalogueMovie);
-    setMovies([...movies, displayInfo]);
+  const addMovieFromCatalogue = async (catalogueMovie: CatalogMovie) => {
+    const nextIds = Array.from(new Set([...watchedMovieIds, catalogueMovie.id]));
+    setWatchedMovieIds(nextIds);
+    await persistUserInfo(nextIds, ratings);
     setShowAddModal(false);
   };
 
-  // Delete movie from history
-  const deleteMovie = (movieId: string) => {
-    setMovies(movies.filter((m) => m.id !== movieId));
+  const deleteMovie = async (movieId: number) => {
+    const nextIds = watchedMovieIds.filter((id) => id !== movieId);
+    setWatchedMovieIds(nextIds);
+    await persistUserInfo(nextIds, ratings);
     setOpenMenuId(null);
   };
 
-  // Open rating overlay for a specific movie
-  const openRatingOverlay = (movie: any) => {
+  const openRatingOverlay = (movie: CatalogMovie) => {
     setSelectedMovieForRating(movie);
     setShowRatingOverlay(true);
     setOpenMenuId(null);
   };
 
-  // Handle rating submission
-  const rateMovie = (score: number) => {
-    setRatings({ ...ratings, [selectedMovieForRating.id]: score });
+  const rateMovie = async (score: number) => {
+    if (!selectedMovieForRating) return;
+
+    const nextRatings = { ...ratings, [selectedMovieForRating.id]: score };
+    setRatings(nextRatings);
+    await persistUserInfo(watchedMovieIds, nextRatings);
     setShowRatingOverlay(false);
     setSelectedMovieForRating(null);
   };
 
-  // Open info overlay for a specific movie
-  const openInfoOverlay = (movie: any) => {
+  const openInfoOverlay = async (movie: CatalogMovie) => {
     setSelectedMovieForInfo(movie);
     setShowInfoOverlay(true);
     setOpenMenuId(null);
+
+    setIsVirtueLoading(true);
+    try {
+      const scores = await getMovieVirtueScores(movie.id);
+      setSelectedMovieVirtues(scores);
+    } catch (error) {
+      console.error("Failed to load virtue scores", error);
+      setSelectedMovieVirtues(EMPTY_VIRTUE_SCORES);
+    } finally {
+      setIsVirtueLoading(false);
+    }
   };
 
-  // Handle closing the add-movie modal
   const handleCloseAddModal = () => {
     setShowAddModal(false);
     setAddMovieSearchQuery("");
   };
 
+  if (isLoading) {
+    return (
+      <ThemedView style={styles.container}>
+        <ActivityIndicator size="large" />
+        <ThemedText>Loading movies...</ThemedText>
+      </ThemedView>
+    );
+  }
+
   return (
     <ThemedView style={styles.container}>
       <ThemedText type="title">Watch History</ThemedText>
-      <ThemedText type="subtitle">
-        You can view your watched movies here.
-      </ThemedText>
+      <ThemedText type="subtitle">You can view your watched movies here.</ThemedText>
+      {loadError ? <ThemedText>{loadError}</ThemedText> : null}
 
       <TextInput
         placeholder="Search movies..."
@@ -109,8 +200,8 @@ export default function WatchHistoryScreen() {
       />
 
       <FlatList
-        data={searchMovies(movies, watchHistorySearchQuery)}
-        keyExtractor={(item) => item.id}
+        data={searchMovies(watchedMovies, watchHistorySearchQuery)}
+        keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={globalStyles.listContent}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -119,31 +210,29 @@ export default function WatchHistoryScreen() {
             activeOpacity={0.7}
           >
             <ThemedView style={globalStyles.movieItem}>
-              <TouchableOpacity
-                style={styles.menuButton}
-                onPress={(e) => openMenu(item.id, e)}
-              >
+              <TouchableOpacity style={styles.menuButton} onPress={(e) => openMenu(item.id, e)}>
                 <ThemedText style={globalStyles.menuIcon}>⋮</ThemedText>
               </TouchableOpacity>
 
               <ThemedView style={globalStyles.movieContent}>
                 <ThemedView style={globalStyles.posterPlaceholder}>
-                  <ThemedText>Poster</ThemedText>
+                  {item.image_url ? (
+                    <Image source={{ uri: item.image_url }} style={styles.posterImage} />
+                  ) : (
+                    <ThemedText>Poster</ThemedText>
+                  )}
                 </ThemedView>
                 <ThemedView style={globalStyles.movieInfo}>
                   <ThemedText type="subtitle" numberOfLines={1} ellipsizeMode="tail">
                     {item.title}
                   </ThemedText>
                   <ThemedText style={globalStyles.categories} numberOfLines={1} ellipsizeMode="tail">
-                    {item.categories.join(", ")}
+                    {(item.genres ?? []).join(", ") || "No genres"}
                   </ThemedText>
                 </ThemedView>
               </ThemedView>
 
-              <TouchableOpacity
-                style={styles.ratingSection}
-                onPress={() => openRatingOverlay(item)}
-              >
+              <TouchableOpacity style={styles.ratingSection} onPress={() => openRatingOverlay(item)}>
                 <ThemedText style={styles.ratingLabel}>Rating</ThemedText>
                 <ThemedText style={styles.ratingValue}>
                   {ratings[item.id] ? `${ratings[item.id]}/10` : "Not rated"}
@@ -154,14 +243,10 @@ export default function WatchHistoryScreen() {
         )}
       />
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setShowAddModal(true)}
-      >
+      <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)}>
         <ThemedText style={globalStyles.fabText}>+</ThemedText>
       </TouchableOpacity>
 
-      {/* Add movie modal */}
       <Modal
         visible={showAddModal}
         animationType="slide"
@@ -179,36 +264,33 @@ export default function WatchHistoryScreen() {
             onChangeText={(text) => setAddMovieSearchQuery(text)}
           />
           <FlatList
-            data={searchMovies(getAvailableMovies(), addMovieSearchQuery)}
-            keyExtractor={(item) => item.id}
+            data={searchMovies(availableMovies, addMovieSearchQuery)}
+            keyExtractor={(item) => item.id.toString()}
             contentContainerStyle={globalStyles.modalListContent}
             renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.movieSelectItem}
-                onPress={() => addMovieFromCatalogue(item)}
-              >
+              <TouchableOpacity style={styles.movieSelectItem} onPress={() => addMovieFromCatalogue(item)}>
                 <ThemedView style={globalStyles.posterPlaceholder}>
-                  <ThemedText>Poster</ThemedText>
+                  {item.image_url ? (
+                    <Image source={{ uri: item.image_url }} style={styles.posterImage} />
+                  ) : (
+                    <ThemedText>Poster</ThemedText>
+                  )}
                 </ThemedView>
                 <ThemedView style={globalStyles.movieInfo}>
                   <ThemedText type="subtitle">{item.title}</ThemedText>
                   <ThemedText style={globalStyles.categories}>
-                    {item.categories.join(", ")}
+                    {(item.genres ?? []).join(", ") || "No genres"}
                   </ThemedText>
                 </ThemedView>
               </TouchableOpacity>
             )}
           />
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={handleCloseAddModal}
-          >
+          <TouchableOpacity style={styles.closeButton} onPress={handleCloseAddModal}>
             <ThemedText style={globalStyles.infoCloseButtonText}>Close</ThemedText>
           </TouchableOpacity>
         </ThemedView>
       </Modal>
 
-      {/* Rating overlay */}
       <Modal
         visible={showRatingOverlay}
         animationType="fade"
@@ -220,16 +302,10 @@ export default function WatchHistoryScreen() {
             <ThemedText type="title" style={globalStyles.overlayTitle}>
               Rate {selectedMovieForRating?.title}
             </ThemedText>
-            <ThemedText style={globalStyles.overlayDescription}>
-              Select a rating from 1 to 10
-            </ThemedText>
+            <ThemedText style={globalStyles.overlayDescription}>Select a rating from 1 to 10</ThemedText>
             <View style={styles.ratingButtonsContainer}>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
-                <TouchableOpacity
-                  key={score}
-                  style={styles.ratingButton}
-                  onPress={() => rateMovie(score)}
-                >
+                <TouchableOpacity key={score} style={styles.ratingButton} onPress={() => rateMovie(score)}>
                   <ThemedText style={styles.ratingButtonText}>{score}</ThemedText>
                 </TouchableOpacity>
               ))}
@@ -244,7 +320,6 @@ export default function WatchHistoryScreen() {
         </ThemedView>
       </Modal>
 
-      {/* Info overlay */}
       <Modal
         visible={showInfoOverlay}
         animationType="slide"
@@ -262,21 +337,54 @@ export default function WatchHistoryScreen() {
             {selectedMovieForInfo?.title}
           </ThemedText>
           <ThemedView style={globalStyles.infoPosterPlaceholder}>
-            <ThemedText>Poster</ThemedText>
+            {selectedMovieForInfo?.image_url ? (
+              <Image source={{ uri: selectedMovieForInfo.image_url }} style={styles.infoPosterImage} />
+            ) : (
+              <ThemedText>Poster</ThemedText>
+            )}
           </ThemedView>
           <ThemedText style={globalStyles.infoPlaceholder}>
-            Movie information will be displayed here. This page will eventually
-            show genres, cast, description, and all other IMDb-like information.
+            {selectedMovieForInfo?.summary || "No summary available."}
           </ThemedText>
-          {ratings[selectedMovieForInfo?.id] && (
-            <ThemedText style={styles.infoRating}>
-              Your Rating: {ratings[selectedMovieForInfo?.id]}/10
-            </ThemedText>
+          <ThemedText style={globalStyles.infoPlaceholder}>
+            {(selectedMovieForInfo?.genres ?? []).join(", ") || "No genres"}
+          </ThemedText>
+          <ThemedText style={styles.virtueTitle}>Virtue Scores</ThemedText>
+          {isVirtueLoading ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <View style={styles.virtueGrid}>
+              {VIRTUE_COLUMNS.map((column, columnIndex) => (
+                <View key={columnIndex} style={styles.virtueColumn}>
+                  {column.map((virtue) => {
+                    const score = toPercent(selectedMovieVirtues[virtue.key]);
+                    return (
+                      <View key={virtue.key} style={styles.virtueRow}>
+                        <View style={styles.virtueRowHeader}>
+                          <ThemedText style={styles.virtueLabel}>{virtue.label}</ThemedText>
+                          <ThemedText style={styles.virtueValue}>{score}%</ThemedText>
+                        </View>
+                        <View style={styles.virtueBarTrack}>
+                          <View
+                            style={[
+                              styles.virtueBarFill,
+                              { width: `${score}%`, backgroundColor: virtue.color },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          )}
+          {selectedMovieForInfo && ratings[selectedMovieForInfo.id] && (
+            <ThemedText style={styles.infoRating}>Your Rating: {ratings[selectedMovieForInfo.id]}/10</ThemedText>
           )}
         </ThemedView>
       </Modal>
 
-      {/* Context menu */}
       <Modal
         visible={openMenuId !== null}
         animationType="fade"
@@ -297,7 +405,7 @@ export default function WatchHistoryScreen() {
             <TouchableOpacity
               style={globalStyles.menuItem}
               onPress={() => {
-                const movie = movies.find((m) => m.id === openMenuId);
+                const movie = watchedMovies.find((m) => m.id === openMenuId);
                 if (movie) openRatingOverlay(movie);
               }}
             >
@@ -306,7 +414,7 @@ export default function WatchHistoryScreen() {
             <TouchableOpacity
               style={globalStyles.menuItem}
               onPress={() => {
-                const movie = movies.find((m) => m.id === openMenuId);
+                const movie = watchedMovies.find((m) => m.id === openMenuId);
                 if (movie) openInfoOverlay(movie);
               }}
             >
@@ -334,7 +442,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
 
-  // Search bar (global base + local width constraint) 
+  // Search bar (global base + local width constraint)   
   searchBar: {
     ...globalStyles.searchBar,
     width: "35%",
@@ -402,8 +510,11 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "white",
   },
-
-  // Add-movie modal 
+  posterImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 8,
+  },
   modalContainer: {
     flex: 1,
     padding: 16,
@@ -442,7 +553,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
 
-  // Info modal 
+  // Info modal  
   infoContainer: {
     flex: 1,
     padding: 16,
@@ -451,6 +562,53 @@ const styles = StyleSheet.create({
   infoTitle: {
     marginBottom: 16,
     textAlign: "center",
+  },
+  infoPosterImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 12,
+  },
+  virtueTitle: {
+    marginTop: 16,
+    marginBottom: 10,
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  virtueGrid: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 8,
+  },
+  virtueColumn: {
+    flex: 1,
+    gap: 8,
+  },
+  virtueRow: {
+    gap: 4,
+  },
+  virtueRowHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  virtueLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  virtueValue: {
+    fontSize: 12,
+    opacity: 0.85,
+    fontWeight: "700",
+  },
+  virtueBarTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    overflow: "hidden",
+  },
+  virtueBarFill: {
+    height: "100%",
+    borderRadius: 999,
   },
   infoRating: {
     fontSize: 16,

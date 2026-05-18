@@ -155,23 +155,24 @@ export const globalStyles = StyleSheet.create({
   // Movie list
   listContent: {
     paddingBottom: 100,
-    alignItems: "center",
+    alignItems: "stretch",
   },
   movieItemContainer: {
     width: "100%",
-    aspectRatio: 500 / 140,
-    alignSelf: "center",
+    maxWidth: 920,
+    minHeight: 110,
+    alignSelf: "stretch",
   },
   movieItem: {
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
-    padding:"3%",
+    padding: 12,
     backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: "2%",
+    borderRadius: 10,
     gap: 12,
     marginVertical: 6,
-    height: "100%",
+    minHeight: 110,
     zIndex: 1,
   },
   movieContent: {
@@ -191,6 +192,6 @@ export const globalStyles = StyleSheet.create({
   // Used on any modal that presents a scrollable list of selectable items
   modalListContent: {
     paddingBottom: 20,
-    alignItems: "center",
+    alignItems: "stretch",
   },
 });
