@@ -1,7 +1,7 @@
 
 import { Platform } from 'react-native';
 
-const DEFAULT_HOST = 'https://eudaimonic.arthuridema.nl';
+const DEFAULT_HOST = 'http://localhost:8000';
 
 const API_BASE_URL = DEFAULT_HOST;
 
