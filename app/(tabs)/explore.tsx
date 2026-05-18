@@ -32,6 +32,7 @@ export default function ChatScreen() {
     title: string;
     release_date: string | null;
     rating: number | null;
+    review: string | null;
   }>>([]);
   const flatListRef = useRef<FlatList>(null);
 
@@ -50,6 +51,7 @@ export default function ChatScreen() {
             title: m.title,
             release_date: m.release_date || null,
             rating: userInfo.ratings[m.id] || null,
+            review: userInfo.reviews[m.id] || null,
           }));
 
         setWatchedMovies(watched);
@@ -99,13 +101,14 @@ export default function ChatScreen() {
       let fullMessage = "You are a friendly and knowledgeable movie recommendation assistant. Your role is to help users discover movies they'll love based on their tastes and previous viewing history. Be conversational, enthusiastic about cinema, and provide thoughtful recommendations with brief explanations.\n\n";
 
       if (watchedMovies.length > 0) {
-        fullMessage += "Here are the movies the user has watched and their ratings:\n";
+        fullMessage += "Here are the movies the user has watched, their ratings, and any written reviews:\n";
         watchedMovies.forEach((movie) => {
           const ratingStr = movie.rating ? `${movie.rating}/10` : "not rated";
           const year = movie.release_date?.split("-")[0] || "unknown year";
-          fullMessage += `- ${movie.title} (${year}) - ${ratingStr}\n`;
+          const reviewText = movie.review?.trim() ? ` | review: ${movie.review.trim()}` : "";
+          fullMessage += `- ${movie.title} (${year}) - ${ratingStr}${reviewText}\n`;
         });
-        fullMessage += "\nUse this context to understand their preferences and recommend similar or complementary films.\n\n";
+        fullMessage += "\nUse this context to understand their preferences, including what they liked or disliked in their written reviews, and recommend similar or complementary films.\n\n";
       } else {
         fullMessage +=
           "The user hasn't watched any movies in their history yet. Help them discover great films based on what they tell you they like.\n\n";

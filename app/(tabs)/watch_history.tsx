@@ -23,6 +23,7 @@ import {
 import { loadUserInfo, saveUserInfo } from "../../src/storage/userinfo";
 
 type RatingsMap = Record<number, number>;
+type ReviewsMap = Record<number, string>;
 
 const EMPTY_VIRTUE_SCORES: VirtueScores = {
   wisdom: 0,
@@ -40,9 +41,13 @@ export default function WatchHistoryScreen() {
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [ratings, setRatings] = useState<RatingsMap>({});
+  const [reviews, setReviews] = useState<ReviewsMap>({});
  
   const [showRatingOverlay, setShowRatingOverlay] = useState(false);
   const [selectedMovieForRating, setSelectedMovieForRating] = useState<CatalogMovie | null>(null);
+  const [showReviewOverlay, setShowReviewOverlay] = useState(false);
+  const [selectedMovieForReview, setSelectedMovieForReview] = useState<CatalogMovie | null>(null);
+  const [reviewDraft, setReviewDraft] = useState("");
 
   const [showInfoOverlay, setShowInfoOverlay] = useState(false);
   const [selectedMovieForInfo, setSelectedMovieForInfo] = useState<CatalogMovie | null>(null);
@@ -59,10 +64,11 @@ export default function WatchHistoryScreen() {
       try {
         const [movies, rawUserInfo] = await Promise.all([getCatalogMovies(100), loadUserInfo()]);
         if (!mounted) return;
-        const userInfo = rawUserInfo ?? { watchedMovieIds: [], ratings: {} };
+        const userInfo = rawUserInfo ?? { watchedMovieIds: [], ratings: {}, reviews: {} };
         setCatalogMovies(movies ?? []);
         setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
         setRatings(userInfo.ratings ?? {});
+        setReviews(userInfo.reviews ?? {});
       } catch (err) {
         console.error("Failed loading watch history", err);
         if (!mounted) return;
@@ -88,7 +94,7 @@ export default function WatchHistoryScreen() {
 
   async function persistUserInfo(nextIds: number[], nextRatings: RatingsMap) {
     try {
-      await saveUserInfo({ watchedMovieIds: nextIds, ratings: nextRatings });
+      await saveUserInfo({ watchedMovieIds: nextIds, ratings: nextRatings, reviews });
     } catch (err) {
       console.error("Failed to persist user info", err);
       setLoadError("Failed to save watch history.");
@@ -111,8 +117,14 @@ export default function WatchHistoryScreen() {
 
   const deleteMovie = async (movieId: number) => {
     const next = watchedMovieIds.filter((id) => id !== movieId);
+    const nextRatings = { ...ratings };
+    delete nextRatings[movieId];
+    const nextReviews = { ...reviews };
+    delete nextReviews[movieId];
     setWatchedMovieIds(next);
-    await persistUserInfo(next, ratings);
+    setRatings(nextRatings);
+    setReviews(nextReviews);
+    await saveUserInfo({ watchedMovieIds: next, ratings: nextRatings, reviews: nextReviews });
   };
 
   const openRatingOverlay = (movie: CatalogMovie) => {
@@ -128,6 +140,31 @@ export default function WatchHistoryScreen() {
     await persistUserInfo(watchedMovieIds, nextRatings);
     setShowRatingOverlay(false);
     setSelectedMovieForRating(null);
+  };
+
+  const openReviewOverlay = (movie: CatalogMovie) => {
+    setSelectedMovieForReview(movie);
+    setReviewDraft(reviews[movie.id] ?? "");
+    setShowReviewOverlay(true);
+  };
+
+  const saveReview = async () => {
+    if (!selectedMovieForReview) return;
+
+    const nextReviews = {
+      ...reviews,
+      [selectedMovieForReview.id]: reviewDraft.trim(),
+    };
+
+    if (!reviewDraft.trim()) {
+      delete nextReviews[selectedMovieForReview.id];
+    }
+
+    setReviews(nextReviews);
+    await saveUserInfo({ watchedMovieIds, ratings, reviews: nextReviews });
+    setShowReviewOverlay(false);
+    setSelectedMovieForReview(null);
+    setReviewDraft("");
   };
 
   const openInfoOverlay = async (movie: CatalogMovie) => {
@@ -199,7 +236,15 @@ export default function WatchHistoryScreen() {
               <TouchableOpacity style={styles.rateButton} onPress={() => openRatingOverlay(item)}>
                 <ThemedText style={styles.rateText}>{ratings[item.id] ? `${ratings[item.id]}/10` : "Rate"}</ThemedText>
               </TouchableOpacity>
+              <TouchableOpacity style={styles.reviewButton} onPress={() => openReviewOverlay(item)}>
+                <ThemedText style={styles.reviewText}>{reviews[item.id] ? "Edit review" : "Review"}</ThemedText>
+              </TouchableOpacity>
             </View>
+            {reviews[item.id] ? (
+              <ThemedText style={styles.reviewPreview} numberOfLines={2} ellipsizeMode="tail">
+                {reviews[item.id]}
+              </ThemedText>
+            ) : null}
           </TouchableOpacity>
         )}
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
@@ -277,6 +322,35 @@ export default function WatchHistoryScreen() {
         </ThemedView>
       </Modal>
 
+      <Modal visible={showReviewOverlay} transparent animationType="fade">
+        <ThemedView style={globalStyles.overlayContainer}>
+          <View style={styles.reviewOverlayContent}>
+            <ThemedText type="title">Write a review</ThemedText>
+            <ThemedText style={styles.reviewOverlaySubtitle}>
+              {selectedMovieForReview?.title}
+            </ThemedText>
+            <TextInput
+              value={reviewDraft}
+              onChangeText={setReviewDraft}
+              placeholder="Write what you thought about this movie..."
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              multiline
+              textAlignVertical="top"
+              style={styles.reviewInput}
+              maxLength={1000}
+            />
+            <View style={styles.reviewOverlayActions}>
+              <TouchableOpacity style={styles.reviewSaveButton} onPress={saveReview}>
+                <ThemedText style={styles.reviewSaveText}>Save review</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.reviewCancelButton} onPress={() => setShowReviewOverlay(false)}>
+                <ThemedText>Cancel</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ThemedView>
+      </Modal>
+
       {/* Info overlay */}
       <Modal visible={showInfoOverlay} animationType="slide">
         <ThemedView style={styles.infoRoot}>
@@ -312,6 +386,15 @@ export default function WatchHistoryScreen() {
           {selectedMovieForInfo && ratings[selectedMovieForInfo.id] && (
             <ThemedText>Your rating: {ratings[selectedMovieForInfo.id]}/10</ThemedText>
           )}
+
+          {selectedMovieForInfo && reviews[selectedMovieForInfo.id] ? (
+            <>
+              <ThemedText type="subtitle" style={styles.infoReviewTitle}>
+                Your review
+              </ThemedText>
+              <ThemedText style={styles.infoReviewText}>{reviews[selectedMovieForInfo.id]}</ThemedText>
+            </>
+          ) : null}
         </ThemedView>
       </Modal>
     </ThemedView>
@@ -366,8 +449,27 @@ const styles = StyleSheet.create({
   rateText: {
     fontWeight: "700",
   },
+  reviewButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,122,255,0.12)",
+  },
+  reviewText: {
+    fontWeight: "700",
+    color: "#9BC9FF",
+  },
+  reviewPreview: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    opacity: 0.8,
+  },
   fab: {
     ...globalStyles.fab,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     right: 20,
     bottom: 20,
   },
@@ -406,6 +508,45 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "700",
   },
+  reviewOverlayContent: {
+    ...globalStyles.overlayContent,
+    width: "100%",
+    maxWidth: 500,
+    gap: 12,
+  },
+  reviewOverlaySubtitle: {
+    opacity: 0.8,
+  },
+  reviewInput: {
+    minHeight: 160,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 12,
+    padding: 12,
+    color: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  reviewOverlayActions: {
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "flex-end",
+  },
+  reviewSaveButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#007AFF",
+  },
+  reviewSaveText: {
+    color: "white",
+    fontWeight: "700",
+  },
+  reviewCancelButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
   infoRoot: {
     flex: 1,
     padding: 16,
@@ -424,5 +565,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 6,
+  },
+  infoReviewTitle: {
+    marginTop: 16,
+  },
+  infoReviewText: {
+    marginTop: 4,
+    lineHeight: 20,
   },
 });

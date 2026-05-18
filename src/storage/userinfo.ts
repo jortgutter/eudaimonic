@@ -6,11 +6,13 @@ export const USER_INFO_STORAGE_KEY = "eudaimonic.userinfo.v1";
 export type UserInfo = {
   watchedMovieIds: number[];
   ratings: Record<string, number>;
+  reviews: Record<string, string>;
 };
 
 const DEFAULT_USER_INFO: UserInfo = {
   watchedMovieIds: [],
   ratings: {},
+  reviews: {},
 };
 
 export async function loadUserInfo(): Promise<UserInfo> {
@@ -43,6 +45,14 @@ export async function loadUserInfo(): Promise<UserInfo> {
               )
             )
           : {},
+        reviews:
+          parsed.reviews && typeof parsed.reviews === "object"
+            ? Object.fromEntries(
+                Object.entries(parsed.reviews).filter(
+                  ([key, value]) => typeof key === "string" && typeof value === "string"
+                )
+              )
+            : {},
     };
   } catch {
     return DEFAULT_USER_INFO;
