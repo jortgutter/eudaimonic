@@ -1,8 +1,8 @@
 """Movie business logic"""
 from sqlmodel import Session
 
-from app.db.models import Movie
-from app.schemas import MovieCreate, MovieUpdate
+from backend.app.db.models import Movie
+from backend.app.schemas import MovieCreate, MovieUpdate
 
 
 class MovieService:

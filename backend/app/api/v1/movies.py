@@ -1,8 +1,8 @@
 """Local movie catalog endpoints"""
 from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse
-from app.services.catalog_service import CatalogService
+from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse
+from backend.app.services.catalog_service import CatalogService
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 

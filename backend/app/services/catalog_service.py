@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-from app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, VirtueScoreSet
+from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, VirtueScoreSet
 
 
 class CatalogService:

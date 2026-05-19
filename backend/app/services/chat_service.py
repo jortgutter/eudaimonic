@@ -4,8 +4,8 @@ import logging
 
 import httpx
 from fastapi import HTTPException, status
-from app.core.config import get_settings
-from app.schemas.chat import ChatRequest, ChatResponse
+from backend.app.core.config import get_settings
+from backend.app.schemas.chat import ChatRequest, ChatResponse
 
 
 # Use uvicorn's configured logger so INFO lines are visible in container logs.

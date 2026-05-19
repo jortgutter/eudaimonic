@@ -2,9 +2,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import get_settings
-from app.api.v1 import router as api_v1_router
-from app.db.database import engine, Base, sync_sqlite_schema
+from backend.app.core.config import get_settings
+from backend.app.api.v1 import router as api_v1_router
+from backend.app.db.database import engine, Base, sync_sqlite_schema
 
 settings = get_settings()
 
