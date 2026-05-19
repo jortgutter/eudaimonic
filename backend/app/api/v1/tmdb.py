@@ -2,9 +2,9 @@
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-from backend.app.db.database import get_db
-from backend.app.schemas import TmdbImportResponse, TmdbSearchResponse
-from backend.app.services.tmdb_service import TmdbService
+from app.db.database import get_db
+from app.schemas import TmdbImportResponse, TmdbSearchResponse
+from app.services.tmdb_service import TmdbService
 
 router = APIRouter(prefix="/tmdb", tags=["tmdb"])
 

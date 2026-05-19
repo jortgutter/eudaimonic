@@ -184,12 +184,12 @@ useEffect(() => {
               </Text>
 
               <View style={styles.traitsContainer}>
-                <Text>Humanity: {selectedMovie.Humanity}</Text>
-                <Text>Courage: {selectedMovie.Courage}</Text>
-                <Text>Justice: {selectedMovie.Justice}</Text>
-                <Text>Transcendence: {selectedMovie.Transcendence}</Text>
-                <Text>Temperance: {selectedMovie.Temperance}</Text>
-                <Text>Wisdom: {selectedMovie.Wisdom}</Text>
+                <Text style={{ color: "white" }}> Humanity: {selectedMovie.Humanity}</Text>
+                <Text style={{ color: "white" }}>Courage: {selectedMovie.Courage}</Text>
+                <Text style={{ color: "white" }}>Justice: {selectedMovie.Justice}</Text>
+                <Text style={{ color: "white" }}>Transcendence: {selectedMovie.Transcendence}</Text>
+                <Text style={{ color: "white" }}>Temperance: {selectedMovie.Temperance}</Text>
+                <Text style={{ color: "white" }}>Wisdom: {selectedMovie.Wisdom}</Text>
               </View>
 
               <TouchableOpacity
@@ -559,6 +559,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   cardMeta: {
+    color: "white",
     opacity: 0.75,
     fontSize: 12,
   },

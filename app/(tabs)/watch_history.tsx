@@ -21,6 +21,8 @@ import {
   VirtueScores,
 } from "../../src/db/database";
 import { loadUserInfo, saveUserInfo } from "../../src/storage/userinfo";
+import { IconSymbol } from "@/components/ui/icon-symbol";
+import Ionicons from "@expo/vector-icons/build/Ionicons";
 
 type RatingsMap = Record<number, number>;
 type ReviewsMap = Record<number, string>;
@@ -239,6 +241,9 @@ export default function WatchHistoryScreen() {
               <TouchableOpacity style={styles.reviewButton} onPress={() => openReviewOverlay(item)}>
                 <ThemedText style={styles.reviewText}>{reviews[item.id] ? "Edit review" : "Review"}</ThemedText>
               </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteButton} onPress={() => deleteMovie(item.id)}>
+                <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+              </TouchableOpacity>
             </View>
             {reviews[item.id] ? (
               <ThemedText style={styles.reviewPreview} numberOfLines={2} ellipsizeMode="tail">
@@ -439,6 +444,12 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 6,
+  },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
   rateButton: {
     paddingHorizontal: 12,

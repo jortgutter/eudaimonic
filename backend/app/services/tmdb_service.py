@@ -5,9 +5,9 @@ import httpx
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
-from backend.app.core.config import get_settings
-from backend.app.db.models import Movie
-from backend.app.schemas import MovieCreate, TmdbMovieSummary, TmdbSearchResponse
+from app.core.config import get_settings
+from app.db.models import Movie
+from app.schemas import MovieCreate, TmdbMovieSummary, TmdbSearchResponse
 
 
 class TmdbService:
