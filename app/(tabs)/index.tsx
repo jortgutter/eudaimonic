@@ -70,11 +70,21 @@ export default function HomeScreen() {
   const [toggles, setToggles] = useState({
     Wisdom: { state: false, deactColor: "#457", actColor: "#9af" },
     Humanity: { state: false, deactColor: "#172", actColor: "#2e4" },
-    Purpose: { state: false, deactColor: "#662", actColor: "#cc4" },
+    Transcendence: { state: false, deactColor: "#662", actColor: "#cc4" },
     Justice: { state: false, deactColor: "#526", actColor: "#a4e" },
-    Restraint: { state: false, deactColor: "#445", actColor: "#88a" },
+    Temperance: { state: false, deactColor: "#445", actColor: "#88a" },
     Courage: { state: false, deactColor: "#751", actColor: "#fa2" },
   });
+
+  const displayNames: Record<string, string> = 
+  { Wisdom: "Wisdom",
+    Humanity: "Humanity",
+    Transcendence: "Transcendence",
+    Justice: "Justice",
+    Temperance: "Restraint",
+    Courage: "Courage"
+  };
+
 
   const [scoredMovies, setDbMovies] = useState<ScoredMovie[]>([]);
 
@@ -188,7 +198,7 @@ useEffect(() => {
                 <Text style={{ color: "white" }}>Courage: {selectedMovie.Courage}</Text>
                 <Text style={{ color: "white" }}>Justice: {selectedMovie.Justice}</Text>
                 <Text style={{ color: "white" }}>Transcendence: {selectedMovie.Transcendence}</Text>
-                <Text style={{ color: "white" }}>Temperance: {selectedMovie.Temperance}</Text>
+                <Text style={{ color: "white" }}>Restraint: {selectedMovie.Temperance}</Text>
                 <Text style={{ color: "white" }}>Wisdom: {selectedMovie.Wisdom}</Text>
               </View>
 
@@ -238,7 +248,7 @@ useEffect(() => {
               ]}
             >
               <Text style={styles.text}>
-                {key} {value ? "" : ""}
+                {displayNames[key] ?? key}
               </Text>
             </Pressable>
           );
