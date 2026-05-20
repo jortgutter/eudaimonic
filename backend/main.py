@@ -45,6 +45,7 @@ def root():
 
 if __name__ == "__main__":
     import uvicorn
+    print('starting app...')
 
     uvicorn.run(
         "main:app",
