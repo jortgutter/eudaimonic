@@ -61,15 +61,23 @@ class CatalogService:
         return connection
 
     @staticmethod
-    def _row_to_movie(row: sqlite3.Row, genres: list[str] | None = None) -> MovieCatalogItem:
+    def _row_to_movie(
+        row: sqlite3.Row,
+        genres: list[str] | None = None
+    ) -> MovieCatalogItem:
+
         release_date_value = row["release_date"] if "release_date" in row.keys() else None
         parsed_release_date: date | None = None
+
         if release_date_value:
             try:
                 parsed_release_date = date.fromisoformat(str(release_date_value))
             except ValueError:
                 parsed_release_date = None
 
+        def v(key: str) -> float:
+            return float(row[key]) if key in row.keys() and row[key] is not None else 0.0
+        print(row.keys())
         return MovieCatalogItem(
             id=int(row["id"]),
             title=str(row["title"] or "Untitled"),
@@ -79,6 +87,13 @@ class CatalogService:
             release_date=parsed_release_date,
             adult=bool(row["adult"] or 0),
             genres=genres or [],
+
+            Wisdom=row["Wisdom"],
+            Courage=row["Courage"],
+            Humanity=row["Humanity"],
+            Justice=row["Justice"],
+            Temperance=row["Temperance"],
+            Transcendence=row["Transcendence"],
         )
 
     @staticmethod
@@ -212,3 +227,106 @@ class CatalogService:
             )
 
         return MovieVirtueScoresResponse(movie=movie, virtue_scores=virtue_scores)
+        
+    @staticmethod
+    def recommend_movies(
+        wisdom: float,
+        courage: float,
+        humanity: float,
+        justice: float,
+        temperance: float,
+        transcendence: float,
+        rating_weight: float,
+        limit: int = 20,
+    ) -> list[MovieCatalogItem]:
+
+        query = """
+            SELECT
+                m.id,
+                m.title,
+                m.summary,
+                m.image_url,
+                m.vote_average,
+                m.release_date,
+                m.adult,
+
+                vs.Wisdom,
+                vs.Courage,
+                vs.Humanity,
+                vs.Justice,
+                vs.Temperance,
+                vs.Transcendence,
+
+                COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres,
+
+                (
+                    (
+                        CASE WHEN :wisdom = 0 THEN 0
+                            ELSE (vs.Wisdom - :wisdom) * (vs.Wisdom - :wisdom)
+                        END
+                        +
+                        CASE WHEN :courage = 0 THEN 0
+                            ELSE (vs.Courage - :courage) * (vs.Courage - :courage)
+                        END
+                        +
+                        CASE WHEN :humanity = 0 THEN 0
+                            ELSE (vs.Humanity - :humanity) * (vs.Humanity - :humanity)
+                        END
+                        +
+                        CASE WHEN :justice = 0 THEN 0
+                            ELSE (vs.Justice - :justice) * (vs.Justice - :justice)
+                        END
+                        +
+                        CASE WHEN :temperance = 0 THEN 0
+                            ELSE (vs.Temperance - :temperance) * (vs.Temperance - :temperance)
+                        END
+                        +
+                        CASE WHEN :transcendence = 0 THEN 0
+                            ELSE (vs.Transcendence - :transcendence) * (vs.Transcendence - :transcendence)
+                        END
+                    )
+                    -
+                    (:rating_weight * POWER(m.vote_average / 10.0, 2))
+                ) AS score
+
+            FROM movie_virtue_scores_wide vs
+            JOIN movies m ON m.id = vs.movie_id
+            LEFT JOIN reviews r ON r.movie_id = m.id
+            LEFT JOIN movie_genres mg ON mg.movie_id = m.id
+            LEFT JOIN genres g ON g.id = mg.genre_id
+
+            GROUP BY m.id
+            HAVING COUNT(r.id) >= 10
+
+            ORDER BY score ASC
+            LIMIT :limit
+        """
+
+        params = {
+            "wisdom": wisdom,
+            "courage": courage,
+            "humanity": humanity,
+            "justice": justice,
+            "temperance": temperance,
+            "transcendence": transcendence,
+            "rating_weight": rating_weight,  # tune this
+            "limit": limit,
+        }
+
+        with CatalogService._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+
+        items: list[MovieCatalogItem] = []
+
+        for row in rows:
+            genres = [
+                genre
+                for genre in str(row["genres"] or "").split(",")
+                if genre
+            ]
+
+            items.append(
+                CatalogService._row_to_movie(row, genres=genres)
+            )
+
+        return items

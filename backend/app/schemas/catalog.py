@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-
+    
 class MovieCatalogItem(BaseModel):
     """Movie record from the local SQLite catalog."""
 
@@ -18,6 +18,12 @@ class MovieCatalogItem(BaseModel):
     release_date: Optional[date] = None
     adult: bool = False
     genres: list[str] = Field(default_factory=list)
+    Wisdom: float
+    Courage: float
+    Humanity: float
+    Justice: float
+    Temperance: float
+    Transcendence: float
 
 
 class VirtueScoreSet(BaseModel):

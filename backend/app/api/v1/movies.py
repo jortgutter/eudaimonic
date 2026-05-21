@@ -7,6 +7,7 @@ from backend.app.services.catalog_service import CatalogService
 router = APIRouter(prefix="/movies", tags=["movies"])
 
 
+
 @router.get("", response_model=list[MovieCatalogItem], summary="List Movies")
 def list_movies(
     skip: int = Query(0, ge=0),
@@ -14,6 +15,34 @@ def list_movies(
 ) -> list[MovieCatalogItem]:
     """Get paginated list of movies from the local catalog."""
     return CatalogService.list_movies(skip=skip, limit=limit)
+
+@router.get(
+    "/recommend",
+    response_model=list[MovieCatalogItem],
+    summary="Recommend Movies",
+)
+def recommend_movies(
+    wisdom: float = Query(..., ge=0, le=1),
+    courage: float = Query(..., ge=0, le=1),
+    humanity: float = Query(..., ge=0, le=1),
+    justice: float = Query(..., ge=0, le=1),
+    temperance: float = Query(..., ge=0, le=1),
+    transcendence: float = Query(..., ge=0, le=1),
+    rating_weight: float = Query(..., ge=0, le=1),
+    limit: int = Query(20, ge=1, le=100),
+) -> list[MovieCatalogItem]:
+    """Recommend movies based on virtue trait similarity."""
+
+    return CatalogService.recommend_movies(
+        wisdom=wisdom,
+        courage=courage,
+        humanity=humanity,
+        justice=justice,
+        temperance=temperance,
+        transcendence=transcendence,
+        rating_weight=rating_weight,
+        limit=limit,
+    )
 
 
 @router.get("/search", response_model=list[MovieCatalogItem], summary="Search Movies")

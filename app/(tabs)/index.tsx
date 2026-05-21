@@ -51,6 +51,43 @@ function scoreColor(score: number): string {
   return "#f44336";
 }
 
+const TraitBar = ({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) => {
+  const clamped = Math.max(0, Math.min(1, value ?? 0));
+
+  return (
+    <View style={{ marginBottom: 8 }}>
+      <Text style={{ marginBottom: 4 }}>
+        {label}: {clamped.toFixed(2)}
+      </Text>
+
+      <View
+        style={{
+          height: 8,
+          width: "100%",
+          backgroundColor: "#333",
+          borderRadius: 4,
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            height: "100%",
+            width: `${clamped * 100}%`,
+            backgroundColor: color,
+          }}
+        />
+      </View>
+    </View>
+  );
+};
 
 export default function HomeScreen() {
 
@@ -70,9 +107,9 @@ export default function HomeScreen() {
   const [toggles, setToggles] = useState({
     Wisdom: { state: false, deactColor: "#457", actColor: "#9af" },
     Humanity: { state: false, deactColor: "#172", actColor: "#2e4" },
-    Purpose: { state: false, deactColor: "#662", actColor: "#cc4" },
+    Transcendence: { state: false, deactColor: "#662", actColor: "#cc4" },
     Justice: { state: false, deactColor: "#526", actColor: "#a4e" },
-    Restraint: { state: false, deactColor: "#445", actColor: "#88a" },
+    Temperance: { state: false, deactColor: "#445", actColor: "#88a" },
     Courage: { state: false, deactColor: "#751", actColor: "#fa2" },
   });
 
@@ -96,7 +133,7 @@ useEffect(() => {
       const movies = await getTopMoviesByTraits(activeTraits);
       if (!cancelled) {
         // Log how many movies were loaded to help debug rendering on devices
-        // eslint-disable-next-line no-console
+         
         console.log('Loaded top movies count:', movies.length, movies.slice(0,3).map(m=>m.title));
         setDbMovies(movies);
       }
@@ -184,12 +221,36 @@ useEffect(() => {
               </Text>
 
               <View style={styles.traitsContainer}>
-                <Text>Humanity: {selectedMovie.Humanity}</Text>
-                <Text>Courage: {selectedMovie.Courage}</Text>
-                <Text>Justice: {selectedMovie.Justice}</Text>
-                <Text>Transcendence: {selectedMovie.Transcendence}</Text>
-                <Text>Temperance: {selectedMovie.Temperance}</Text>
-                <Text>Wisdom: {selectedMovie.Wisdom}</Text>
+                <TraitBar
+                  label="Humanity"
+                  value={selectedMovie.Humanity}
+                  color={toggles.Humanity.actColor}
+                />
+                <TraitBar
+                  label="Courage"
+                  value={selectedMovie.Courage}
+                  color={toggles.Courage.actColor}
+                />
+                <TraitBar
+                  label="Justice"
+                  value={selectedMovie.Justice}
+                  color={toggles.Justice.actColor}
+                />
+                <TraitBar
+                  label="Temperance"
+                  value={selectedMovie.Temperance}
+                  color={toggles.Temperance.actColor}
+                />
+                <TraitBar
+                  label="Transcendence"
+                  value={selectedMovie.Transcendence}
+                  color={toggles.Transcendence.actColor}
+                />
+                <TraitBar
+                  label="Wisdom"
+                  value={selectedMovie.Wisdom}
+                  color={toggles.Wisdom.actColor}
+                />
               </View>
 
               <TouchableOpacity
