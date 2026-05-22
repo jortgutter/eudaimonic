@@ -89,6 +89,45 @@ export async function getCatalogMovies(limit = 100): Promise<CatalogMovie[]> {
   return fetchJson<CatalogMovie[]>(`${API_V1_BASE}/movies?skip=0&limit=${limit}`);
 }
 
+export async function searchMovies(
+  query: string,
+  skip = 0,
+  limit = 50
+): Promise<CatalogMovie[]> {
+  const params = new URLSearchParams({
+    q: query,
+    skip: String(skip),
+    limit: String(limit),
+  });
+
+  return fetchJson<CatalogMovie[]>(
+    `${API_V1_BASE}/movies/search?${params.toString()}`
+  );
+}
+
+export async function searchCatalogMovies(
+  query: string,
+  skip = 0,
+  limit = 50
+): Promise<CatalogMovie[]> {
+  const q = query.trim();
+
+  if (!q) {
+    // empty query: let caller decide fallback behavior
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    q,
+    skip: String(skip),
+    limit: String(limit),
+  });
+
+  return fetchJson<CatalogMovie[]>(
+    `${API_V1_BASE}/movies/search?${params.toString()}`
+  );
+}
+
 export async function getMovieVirtueScores(movieId: number): Promise<VirtueScores> {
   const response = await fetchJson<VirtueScoresResponse>(
     `${API_V1_BASE}/movies/${movieId}/virtue-scores`
@@ -124,6 +163,18 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   });
+}
+
+export async function getMoviesByIds(ids: number[]): Promise<CatalogMovie[]> {
+  if (!ids.length) return [];
+
+  const params = new URLSearchParams({
+    ids: ids.join(","),
+  });
+
+  return fetchJson<CatalogMovie[]>(
+    `${API_V1_BASE}/movies/by-ids?${params.toString()}`
+  );
 }
 
 function calculateMatchScore(movie: ScoredMovie, traits: TraitOptions): number {
@@ -189,7 +240,8 @@ function calculateMatchScore(movie: ScoredMovie, traits: TraitOptions): number {
 //   return scoredMovies.sort((a, b) => b.match_score - a.match_score).slice(0, 20);
 // }
 export async function getTopMoviesByTraits(
-  traits: TraitOptions
+  traits: TraitOptions,
+  excludeIds: number[] = []
 ): Promise<CatalogMovie[]> {
 
   const hasEnabledTraits = Object.values(traits).some(Boolean);
@@ -216,9 +268,15 @@ export async function getTopMoviesByTraits(
     limit: "20",
   });
 
+  if (excludeIds.length > 0) {
+    query.append("exclude_ids", excludeIds.join(","))
+  }
+
   const movies = await fetchJson<CatalogMovie[]>(
     `${API_V1_BASE}/movies/recommend?${query.toString()}`
   );
+
+  
 
   return movies;
 }

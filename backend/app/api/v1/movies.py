@@ -3,10 +3,26 @@ from fastapi import APIRouter, HTTPException, Query
 
 from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse
 from backend.app.services.catalog_service import CatalogService
+from typing import List
+
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
+@router.get(
+    "/by-ids",
+    response_model=list[MovieCatalogItem],
+    summary="Get Movies By IDs",
+)
+def get_movies_by_ids(
+    ids: str = Query(..., description="Comma-separated list of movie IDs"),
+) -> list[MovieCatalogItem]:
+    """Fetch multiple movies by their IDs."""
+    try:
+        movie_ids = [int(x) for x in ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid id list")
 
+    return CatalogService.get_movies_by_ids(movie_ids)
 
 @router.get("", response_model=list[MovieCatalogItem], summary="List Movies")
 def list_movies(
@@ -30,6 +46,7 @@ def recommend_movies(
     transcendence: float = Query(..., ge=0, le=1),
     rating_weight: float = Query(..., ge=0, le=1),
     limit: int = Query(20, ge=1, le=100),
+    exclude_ids: str | None = Query(None),
 ) -> list[MovieCatalogItem]:
     """Recommend movies based on virtue trait similarity."""
 
@@ -42,6 +59,7 @@ def recommend_movies(
         transcendence=transcendence,
         rating_weight=rating_weight,
         limit=limit,
+        exclude_ids=exclude_ids
     )
 
 

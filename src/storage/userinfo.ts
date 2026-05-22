@@ -72,3 +72,21 @@ export async function saveUserInfo(data: UserInfo): Promise<void> {
     throw err;
   }
 }
+
+export async function clearWatchHistory(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(USER_INFO_STORAGE_KEY);
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+
+    if (
+      msg.includes("Native module is null") ||
+      msg.includes("cannot access legacy storage")
+    ) {
+      await SecureStore.deleteItemAsync(USER_INFO_STORAGE_KEY);
+      return;
+    }
+
+    throw err;
+  }
+}

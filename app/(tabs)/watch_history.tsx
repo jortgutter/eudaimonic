@@ -1,14 +1,14 @@
 import { Image } from "expo-image";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
   FlatList,
   Modal,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   View,
-  Dimensions,
 } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
@@ -17,11 +17,16 @@ import { globalStyles } from "@/constants/globalStyles";
 import {
   CatalogMovie,
   getCatalogMovies,
+  getMoviesByIds,
   getMovieVirtueScores,
-  VirtueScores,
+  searchCatalogMovies,
+  VirtueScores
 } from "../../src/db/database";
-import { loadUserInfo, saveUserInfo } from "../../src/storage/userinfo";
-
+import {
+  clearWatchHistory,
+  loadUserInfo,
+  saveUserInfo
+} from "../../src/storage/userinfo";
 type RatingsMap = Record<number, number>;
 type ReviewsMap = Record<number, string>;
 
@@ -58,6 +63,60 @@ export default function WatchHistoryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const availableMovies = useMemo(() => {
+  const watchedSet = new Set(watchedMovieIds);
+    return catalogMovies.filter((movie) => !watchedSet.has(movie.id));
+  }, [catalogMovies, watchedMovieIds]);
+
+  
+ const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    (async () => {
+      const movies = await getMoviesByIds(watchedMovieIds);
+      setWatchedMovies(movies);
+    })();
+  }, [watchedMovieIds]);
+
+  useEffect(() => {
+    const timeout = setTimeout(async () => {
+      const q = addMovieSearchQuery.trim();
+
+      // cancel previous request
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setIsSearching(true);
+
+      try {
+        if (!q) {
+          setSearchResults(availableMovies);
+          return;
+        }
+
+        const results = await searchCatalogMovies(q, 0, 50);
+
+        // ignore aborted responses
+        if (controller.signal.aborted) return;
+
+        setSearchResults(results);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+
+        console.error("Search failed", err);
+
+        // fallback instead of empty UI
+        setSearchResults(availableMovies);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [addMovieSearchQuery, availableMovies]);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -82,15 +141,30 @@ export default function WatchHistoryScreen() {
     };
   }, []);
 
-  const watchedMovies = useMemo(() => {
-    const watchedSet = new Set(watchedMovieIds);
-    return catalogMovies.filter((movie) => watchedSet.has(movie.id));
-  }, [catalogMovies, watchedMovieIds]);
+  const [searchResults, setSearchResults] = useState<CatalogMovie[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
-  const availableMovies = useMemo(() => {
-    const watchedSet = new Set(watchedMovieIds);
-    return catalogMovies.filter((movie) => !watchedSet.has(movie.id));
-  }, [catalogMovies, watchedMovieIds]);
+  const [watchedMovies, setWatchedMovies] = useState<CatalogMovie[]>([]);
+
+  const resetWatchHistory = async () => {
+  try {
+    await clearWatchHistory();
+
+    setWatchedMovieIds([]);
+    setRatings({});
+    setReviews({});
+
+    setLoadError(null);
+  } catch (err) {
+    console.error("Failed to clear watch history", err);
+    setLoadError("Failed to reset watch history.");
+  }
+};
+
+  const openAddModal = () => {
+    setShowAddModal(true);
+    setSearchResults(availableMovies);
+  };
 
   async function persistUserInfo(nextIds: number[], nextRatings: RatingsMap) {
     try {
@@ -101,18 +175,26 @@ export default function WatchHistoryScreen() {
     }
   }
 
-  function searchMovies(movies: CatalogMovie[], query: string) {
-    if (!query.trim()) return movies;
-    const lowerQuery = query.toLowerCase();
-    return movies.filter((movie) => movie.title.toLowerCase().includes(lowerQuery) || (movie.genres ?? []).some((genre) => genre.toLowerCase().includes(lowerQuery)));
-  }
+  // function searchMovies(movies: CatalogMovie[], query: string) {
+  //   if (!query.trim()) return movies;
+  //   const lowerQuery = query.toLowerCase();
+  //   return movies.filter((movie) => movie.title.toLowerCase().includes(lowerQuery) || (movie.genres ?? []).some((genre) => genre.toLowerCase().includes(lowerQuery)));
+  // }
 
   const addMovieFromCatalogue = async (movie: CatalogMovie) => {
-    const next = Array.from(new Set([...watchedMovieIds, movie.id]));
-    setWatchedMovieIds(next);
-    await persistUserInfo(next, ratings);
+    console.log("ADDING:", movie.id, movie.title);
+    console.log("BEFORE:", watchedMovieIds);
+    setWatchedMovieIds((prev) => {
+      const next = Array.from(new Set([...prev, movie.id]));
+      persistUserInfo(next, ratings);
+      console.log("AFTER:", next);
+      return next;
+    });
     setShowAddModal(false);
     setAddMovieSearchQuery("");
+    console.log("ADD MOVIE:", movie.id, movie.title);
+    console.log("IN CATALOG:", catalogMovies.some(m => m.id === movie.id));
+    
   };
 
   const deleteMovie = async (movieId: number) => {
@@ -125,6 +207,15 @@ export default function WatchHistoryScreen() {
     setRatings(nextRatings);
     setReviews(nextReviews);
     await saveUserInfo({ watchedMovieIds: next, ratings: nextRatings, reviews: nextReviews });
+  };
+
+  const handleDeleteFromInfo = async () => {
+    if (!selectedMovieForInfo) return;
+
+    await deleteMovie(selectedMovieForInfo.id);
+
+    setShowInfoOverlay(false);
+    setSelectedMovieForInfo(null);
   };
 
   const openRatingOverlay = (movie: CatalogMovie) => {
@@ -182,6 +273,19 @@ export default function WatchHistoryScreen() {
     }
   };
 
+  const filteredWatchedMovies = useMemo(() => {
+  const q = watchHistorySearchQuery.trim().toLowerCase();
+
+  if (!q) return watchedMovies;
+
+    return watchedMovies.filter((movie) => {
+      return (
+        movie.title.toLowerCase().includes(q) ||
+        (movie.genres ?? []).some((g) => g.toLowerCase().includes(q))
+      );
+    });
+  }, [watchedMovies, watchHistorySearchQuery]);
+
   if (isLoading) {
     return (
       <ThemedView style={styles.container}>
@@ -191,12 +295,27 @@ export default function WatchHistoryScreen() {
     );
   }
 
+  
   return (
     <ThemedView style={styles.container}>
       <ThemedText type="title">Watch History</ThemedText>
       <ThemedText type="subtitle">Your watched movies.</ThemedText>
       {loadError ? <ThemedText style={{ color: "#FF3B30" }}>{loadError}</ThemedText> : null}
-
+      <TouchableOpacity
+        onPress={resetWatchHistory}
+        style={{
+          marginTop: 8,
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          backgroundColor: "rgba(255,0,0,0.15)",
+          alignSelf: "flex-start",
+        }}
+      >
+  <ThemedText style={{ color: "#FF3B30", fontWeight: "700" }}>
+    Reset watch history
+  </ThemedText>
+</TouchableOpacity>
       <TextInput
         placeholder="Search watch history..."
         value={watchHistorySearchQuery}
@@ -207,7 +326,7 @@ export default function WatchHistoryScreen() {
       <FlatList
         style={{ flex: 1, width: "100%" }}
         contentContainerStyle={styles.listContent}
-        data={searchMovies(watchedMovies, watchHistorySearchQuery)}
+        data={filteredWatchedMovies}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -259,7 +378,7 @@ export default function WatchHistoryScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)}>
+      <TouchableOpacity style={styles.fab} onPress={openAddModal}>
         <ThemedText style={globalStyles.fabText}>+</ThemedText>
       </TouchableOpacity>
 
@@ -270,12 +389,14 @@ export default function WatchHistoryScreen() {
           <TextInput
             placeholder="Search catalogue..."
             value={addMovieSearchQuery}
-            onChangeText={setAddMovieSearchQuery}
+            onChangeText={(text) => {
+              setAddMovieSearchQuery(text);
+            }}
             style={styles.searchBar}
           />
 
           <FlatList
-            data={searchMovies(availableMovies, addMovieSearchQuery)}
+            data={searchResults}
             keyExtractor={(m) => String(m.id)}
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.modalItem} onPress={() => addMovieFromCatalogue(item)}>
@@ -359,6 +480,23 @@ export default function WatchHistoryScreen() {
           </TouchableOpacity>
 
           <ThemedText type="title">{selectedMovieForInfo?.title}</ThemedText>
+            {selectedMovieForInfo && (
+              <TouchableOpacity
+                style={{
+                  marginTop: 12,
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  backgroundColor: "rgba(255, 59, 48, 0.15)",
+                  borderRadius: 8,
+                  alignSelf: "flex-start",
+                }}
+                onPress={handleDeleteFromInfo}
+              >
+                <ThemedText style={{ color: "#FF3B30", fontWeight: "700" }}>
+                  Remove from history
+                </ThemedText>
+              </TouchableOpacity>
+            )}
           <View style={globalStyles.infoPosterPlaceholder}>
             {selectedMovieForInfo?.image_url ? (
               <Image source={{ uri: selectedMovieForInfo.image_url }} style={styles.infoPoster} />

@@ -2,13 +2,12 @@ import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Image } from "expo-image";
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
 import { getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
-
 // type DbMovie = {
 //   id: number;
 //   title: string;
@@ -90,7 +89,7 @@ const TraitBar = ({
 };
 
 export default function HomeScreen() {
-
+  
   function openInfoOverlay(movie: ScoredMovie) {
     setSelectedMovie(movie);
     setOverlayVisible(true);
@@ -103,7 +102,8 @@ export default function HomeScreen() {
 
   const [selectedMovie, setSelectedMovie] = useState<ScoredMovie | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
-
+  const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
+  const [watchedLoaded, setWatchedLoaded] = useState(false);
   const [toggles, setToggles] = useState({
     Wisdom: { state: false, deactColor: "#457", actColor: "#9af" },
     Humanity: { state: false, deactColor: "#172", actColor: "#2e4" },
@@ -115,47 +115,64 @@ export default function HomeScreen() {
 
   const [scoredMovies, setDbMovies] = useState<ScoredMovie[]>([]);
 
-  const activeTraits: TraitOptions = Object.entries(toggles).reduce(
-    (acc, [key, value]) => {
+
+  const activeTraits: TraitOptions = useMemo(() => {
+    return Object.entries(toggles).reduce((acc, [key, value]) => {
       if (value.state) {
         acc[key as keyof TraitOptions] = true;
       }
       return acc;
-    },
-    {} as TraitOptions
-  );
-
-useEffect(() => {
-  let cancelled = false;
-
-  (async () => {
-    try {
-      const movies = await getTopMoviesByTraits(activeTraits);
-      if (!cancelled) {
-        // Log how many movies were loaded to help debug rendering on devices
-         
-        console.log('Loaded top movies count:', movies.length, movies.slice(0,3).map(m=>m.title));
-        setDbMovies(movies);
-      }
-    } catch (error) {
-      console.error("Failed to load movies from backend", error);
-      if (!cancelled) {
-        setDbMovies([]);
-      }
-    }
-  })();
-
-  return () => {
-    cancelled = true;
-  };
-}, [activeTraits]);
+    }, {} as TraitOptions);
+  }, [toggles]);
 
 
 
-  // const enrichedMovies = ScoredMovies.map((m) => ({
-  //   ...m,
-  //   recommendationScore: computeScore(m, activeTraits),
-  // }));
+  
+// useEffect(() => {
+//   (async () => {
+//     const userInfo = await loadUserInfo();
+//     setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
+//     setWatchedLoaded(true);
+//   })();
+// }, []);
+
+// useEffect(() => {
+//   let cancelled = false;
+
+//   if (!watchedLoaded) return;
+
+//   const run = async () => {
+//     try {
+//       const movies = await getTopMoviesByTraits(
+//         activeTraits,
+//         watchedMovieIds
+//       );
+
+//       if (!cancelled) {
+//         setDbMovies(movies);
+//       }
+//     } catch (err) {
+//       console.error(err);
+//     }
+//   };
+
+//   run();
+
+//   return () => {
+//     cancelled = true;
+//   };
+// }, [watchedLoaded, watchedIdsKey, activeTraits]);
+  useEffect(() => {
+    const run = async () => {
+      const movies = await getTopMoviesByTraits(
+        activeTraits,
+        watchedMovieIds
+      );
+      setDbMovies(movies);
+    };
+
+    run();
+  }, [activeTraits, watchedMovieIds]);
 
 
   const sortedMovies = [...scoredMovies].sort(

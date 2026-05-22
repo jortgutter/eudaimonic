@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Query
 
 from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, VirtueScoreSet
 
@@ -88,12 +88,12 @@ class CatalogService:
             adult=bool(row["adult"] or 0),
             genres=genres or [],
 
-            Wisdom=row["Wisdom"],
-            Courage=row["Courage"],
-            Humanity=row["Humanity"],
-            Justice=row["Justice"],
-            Temperance=row["Temperance"],
-            Transcendence=row["Transcendence"],
+            Wisdom=v("Wisdom"),
+            Courage=v("Courage"),
+            Humanity=v("Humanity"),
+            Justice=v("Justice"),
+            Temperance=v("Temperance"),
+            Transcendence=v("Transcendence"),
         )
 
     @staticmethod
@@ -122,13 +122,30 @@ class CatalogService:
                 m.vote_average,
                 m.release_date,
                 m.adult,
+
+                COUNT(DISTINCT r.id) AS review_count,
+
                 COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres
+
             FROM movies m
-            LEFT JOIN movie_genres mg ON mg.movie_id = m.id
-            LEFT JOIN genres g ON g.id = mg.genre_id
+
+            LEFT JOIN reviews r
+                ON r.movie_id = m.id
+
+            LEFT JOIN movie_genres mg
+                ON mg.movie_id = m.id
+
+            LEFT JOIN genres g
+                ON g.id = mg.genre_id
+
             {where_clause}
+
             GROUP BY m.id
-            ORDER BY m.release_date DESC, m.id DESC
+
+            ORDER BY review_count DESC,
+                    m.vote_average DESC,
+                    m.title ASC
+
             LIMIT ? OFFSET ?
         """
         with CatalogService._connect() as connection:
@@ -176,20 +193,18 @@ class CatalogService:
     @staticmethod
     def search_movies(query: str, skip: int = 0, limit: int = 20) -> list[MovieCatalogItem]:
         where_clause = """
-            WHERE (
-                LOWER(m.title) LIKE LOWER(?)
-                OR LOWER(COALESCE(m.summary, '')) LIKE LOWER(?)
-                OR EXISTS (
-                    SELECT 1
-                    FROM movie_genres mg
-                    JOIN genres g ON g.id = mg.genre_id
-                    WHERE mg.movie_id = m.id
-                      AND LOWER(g.name) LIKE LOWER(?)
-                )
-            )
+            WHERE LOWER(m.title) LIKE LOWER(?)
         """
-        params = (f"%{query}%", f"%{query}%", f"%{query}%")
-        return CatalogService._fetch_movie_rows(where_clause, params, skip=skip, limit=limit)
+
+
+        params = (f"%{query}%",)
+
+        return CatalogService._fetch_movie_rows(
+            where_clause,
+            params,
+            skip=skip,
+            limit=limit,
+        )
 
     @staticmethod
     def get_movie_virtue_scores(movie_id: int) -> MovieVirtueScoresResponse | None:
@@ -238,9 +253,40 @@ class CatalogService:
         transcendence: float,
         rating_weight: float,
         limit: int = 20,
+        exclude_ids: str | None = None,
     ) -> list[MovieCatalogItem]:
 
-        query = """
+        exclude_set: set[int] = set()
+
+        if exclude_ids:
+            exclude_set = {
+                int(x)
+                for x in exclude_ids.split(",")
+                if x.strip().isdigit()
+            }
+
+        exclude_clause = ""
+        params = {
+            "wisdom": wisdom,
+            "courage": courage,
+            "humanity": humanity,
+            "justice": justice,
+            "temperance": temperance,
+            "transcendence": transcendence,
+            "rating_weight": rating_weight,
+            "limit": limit,
+        }
+
+        # Only add exclusion SQL if needed
+        if exclude_set:
+            placeholders = ",".join(["?"] * len(exclude_set))
+            exclude_clause = f"WHERE m.id NOT IN ({placeholders})"
+            exclude_params = tuple(exclude_set)
+        else:
+            exclude_clause = ""
+            exclude_params = tuple()
+
+        query = f"""
             SELECT
                 m.id,
                 m.title,
@@ -261,29 +307,12 @@ class CatalogService:
 
                 (
                     (
-                        CASE WHEN :wisdom = 0 THEN 0
-                            ELSE (vs.Wisdom - :wisdom) * (vs.Wisdom - :wisdom)
-                        END
-                        +
-                        CASE WHEN :courage = 0 THEN 0
-                            ELSE (vs.Courage - :courage) * (vs.Courage - :courage)
-                        END
-                        +
-                        CASE WHEN :humanity = 0 THEN 0
-                            ELSE (vs.Humanity - :humanity) * (vs.Humanity - :humanity)
-                        END
-                        +
-                        CASE WHEN :justice = 0 THEN 0
-                            ELSE (vs.Justice - :justice) * (vs.Justice - :justice)
-                        END
-                        +
-                        CASE WHEN :temperance = 0 THEN 0
-                            ELSE (vs.Temperance - :temperance) * (vs.Temperance - :temperance)
-                        END
-                        +
-                        CASE WHEN :transcendence = 0 THEN 0
-                            ELSE (vs.Transcendence - :transcendence) * (vs.Transcendence - :transcendence)
-                        END
+                        CASE WHEN :wisdom = 0 THEN 0 ELSE (vs.Wisdom - :wisdom) * (vs.Wisdom - :wisdom) END +
+                        CASE WHEN :courage = 0 THEN 0 ELSE (vs.Courage - :courage) * (vs.Courage - :courage) END +
+                        CASE WHEN :humanity = 0 THEN 0 ELSE (vs.Humanity - :humanity) * (vs.Humanity - :humanity) END +
+                        CASE WHEN :justice = 0 THEN 0 ELSE (vs.Justice - :justice) * (vs.Justice - :justice) END +
+                        CASE WHEN :temperance = 0 THEN 0 ELSE (vs.Temperance - :temperance) * (vs.Temperance - :temperance) END +
+                        CASE WHEN :transcendence = 0 THEN 0 ELSE (vs.Transcendence - :transcendence) * (vs.Transcendence - :transcendence) END
                     )
                     -
                     (:rating_weight * POWER(m.vote_average / 10.0, 2))
@@ -295,6 +324,8 @@ class CatalogService:
             LEFT JOIN movie_genres mg ON mg.movie_id = m.id
             LEFT JOIN genres g ON g.id = mg.genre_id
 
+            {exclude_clause}
+
             GROUP BY m.id
             HAVING COUNT(r.id) >= 10
 
@@ -302,31 +333,53 @@ class CatalogService:
             LIMIT :limit
         """
 
-        params = {
-            "wisdom": wisdom,
-            "courage": courage,
-            "humanity": humanity,
-            "justice": justice,
-            "temperance": temperance,
-            "transcendence": transcendence,
-            "rating_weight": rating_weight,  # tune this
-            "limit": limit,
-        }
-
         with CatalogService._connect() as connection:
-            rows = connection.execute(query, params).fetchall()
+            if exclude_set:
+                rows = connection.execute(query, (*exclude_params, params["wisdom"], params["courage"], params["humanity"],
+                                                params["justice"], params["temperance"], params["transcendence"],
+                                                params["rating_weight"], params["limit"])).fetchall()
+            else:
+                rows = connection.execute(query, params).fetchall()
 
         items: list[MovieCatalogItem] = []
 
         for row in rows:
-            genres = [
-                genre
-                for genre in str(row["genres"] or "").split(",")
-                if genre
-            ]
+            genres = [g for g in str(row["genres"] or "").split(",") if g]
+            items.append(CatalogService._row_to_movie(row, genres=genres))
 
-            items.append(
-                CatalogService._row_to_movie(row, genres=genres)
-            )
+        return items
+
+
+    @staticmethod
+    def get_movies_by_ids(movie_ids: list[int]) -> list[MovieCatalogItem]:
+        if not movie_ids:
+            return []
+
+        placeholders = ",".join(["?"] * len(movie_ids))
+
+        query = f"""
+            SELECT
+                m.id,
+                m.title,
+                m.summary,
+                m.image_url,
+                m.vote_average,
+                m.release_date,
+                m.adult,
+                COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres
+            FROM movies m
+            LEFT JOIN movie_genres mg ON mg.movie_id = m.id
+            LEFT JOIN genres g ON g.id = mg.genre_id
+            WHERE m.id IN ({placeholders})
+            GROUP BY m.id
+        """
+
+        with CatalogService._connect() as connection:
+            rows = connection.execute(query, movie_ids).fetchall()
+
+        items: list[MovieCatalogItem] = []
+        for row in rows:
+            genres = [g for g in str(row["genres"] or "").split(",") if g]
+            items.append(CatalogService._row_to_movie(row, genres=genres))
 
         return items
