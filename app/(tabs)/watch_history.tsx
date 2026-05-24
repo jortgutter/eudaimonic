@@ -16,10 +16,10 @@ import { ThemedView } from "@/components/themed-view";
 import { globalStyles } from "@/constants/globalStyles";
 import {
   CatalogMovie,
-  getCatalogMovies,
-  getMoviesByIds,
+  TmdbMovieSummary,
+  importTmdbMovieToCatalog,
   getMovieVirtueScores,
-  searchCatalogMovies,
+  searchTmdbMovies,
   VirtueScores
 } from "../../src/db/database";
 import {
@@ -42,8 +42,8 @@ const EMPTY_VIRTUE_SCORES: VirtueScores = {
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 export default function WatchHistoryScreen() {
-  const [catalogMovies, setCatalogMovies] = useState<CatalogMovie[]>([]);
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
+  const [watchedMovies, setWatchedMovies] = useState<CatalogMovie[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [ratings, setRatings] = useState<RatingsMap>({});
   const [reviews, setReviews] = useState<ReviewsMap>({});
@@ -62,20 +62,9 @@ export default function WatchHistoryScreen() {
   const [addMovieSearchQuery, setAddMovieSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
-  const availableMovies = useMemo(() => {
-  const watchedSet = new Set(watchedMovieIds);
-    return catalogMovies.filter((movie) => !watchedSet.has(movie.id));
-  }, [catalogMovies, watchedMovieIds]);
-
-  
- const abortRef = useRef<AbortController | null>(null);
-  useEffect(() => {
-    (async () => {
-      const movies = await getMoviesByIds(watchedMovieIds);
-      setWatchedMovies(movies);
-    })();
-  }, [watchedMovieIds]);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const timeout = setTimeout(async () => {
@@ -90,11 +79,11 @@ export default function WatchHistoryScreen() {
 
       try {
         if (!q) {
-          setSearchResults(availableMovies);
+          setSearchResults([]);
           return;
         }
 
-        const results = await searchCatalogMovies(q, 0, 50);
+        const results = await searchTmdbMovies(q, 1);
 
         // ignore aborted responses
         if (controller.signal.aborted) return;
@@ -106,7 +95,7 @@ export default function WatchHistoryScreen() {
         console.error("Search failed", err);
 
         // fallback instead of empty UI
-        setSearchResults(availableMovies);
+        setSearchResults([]);
       } finally {
         if (!controller.signal.aborted) {
           setIsSearching(false);
@@ -115,17 +104,17 @@ export default function WatchHistoryScreen() {
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [addMovieSearchQuery, availableMovies]);
+  }, [addMovieSearchQuery]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [movies, rawUserInfo] = await Promise.all([getCatalogMovies(100), loadUserInfo()]);
+        const rawUserInfo = await loadUserInfo();
         if (!mounted) return;
-        const userInfo = rawUserInfo ?? { watchedMovieIds: [], ratings: {}, reviews: {} };
-        setCatalogMovies(movies ?? []);
+        const userInfo = rawUserInfo ?? { watchedMovieIds: [], watchedMovies: [], ratings: {}, reviews: {} };
         setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
+        setWatchedMovies(userInfo.watchedMovies ?? []);
         setRatings(userInfo.ratings ?? {});
         setReviews(userInfo.reviews ?? {});
       } catch (err) {
@@ -141,16 +130,15 @@ export default function WatchHistoryScreen() {
     };
   }, []);
 
-  const [searchResults, setSearchResults] = useState<CatalogMovie[]>([]);
+  const [searchResults, setSearchResults] = useState<TmdbMovieSummary[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-
-  const [watchedMovies, setWatchedMovies] = useState<CatalogMovie[]>([]);
 
   const resetWatchHistory = async () => {
   try {
     await clearWatchHistory();
 
     setWatchedMovieIds([]);
+    setWatchedMovies([]);
     setRatings({});
     setReviews({});
 
@@ -163,12 +151,13 @@ export default function WatchHistoryScreen() {
 
   const openAddModal = () => {
     setShowAddModal(true);
-    setSearchResults(availableMovies);
+    setSearchResults([]);
+    setAddMovieSearchQuery("");
   };
 
-  async function persistUserInfo(nextIds: number[], nextRatings: RatingsMap) {
+  async function persistUserInfo(nextIds: number[], nextRatings: RatingsMap, nextMovies: CatalogMovie[] = watchedMovies) {
     try {
-      await saveUserInfo({ watchedMovieIds: nextIds, ratings: nextRatings, reviews });
+      await saveUserInfo({ watchedMovieIds: nextIds, watchedMovies: nextMovies, ratings: nextRatings, reviews });
     } catch (err) {
       console.error("Failed to persist user info", err);
       setLoadError("Failed to save watch history.");
@@ -181,20 +170,27 @@ export default function WatchHistoryScreen() {
   //   return movies.filter((movie) => movie.title.toLowerCase().includes(lowerQuery) || (movie.genres ?? []).some((genre) => genre.toLowerCase().includes(lowerQuery)));
   // }
 
-  const addMovieFromCatalogue = async (movie: CatalogMovie) => {
-    console.log("ADDING:", movie.id, movie.title);
-    console.log("BEFORE:", watchedMovieIds);
-    setWatchedMovieIds((prev) => {
-      const next = Array.from(new Set([...prev, movie.id]));
-      persistUserInfo(next, ratings);
-      console.log("AFTER:", next);
-      return next;
-    });
-    setShowAddModal(false);
-    setAddMovieSearchQuery("");
-    console.log("ADD MOVIE:", movie.id, movie.title);
-    console.log("IN CATALOG:", catalogMovies.some(m => m.id === movie.id));
-    
+  const addMovieFromTmdb = async (movie: TmdbMovieSummary) => {
+    if (isImporting) return;
+
+    setIsImporting(true);
+    try {
+      const imported = await importTmdbMovieToCatalog(movie.id);
+      const importedMovie = imported.movie;
+      const nextIds = Array.from(new Set([...watchedMovieIds, importedMovie.id]));
+      const nextMovies = [importedMovie, ...watchedMovies.filter((item) => item.id !== importedMovie.id)];
+
+      setWatchedMovieIds(nextIds);
+      setWatchedMovies(nextMovies);
+      await saveUserInfo({ watchedMovieIds: nextIds, watchedMovies: nextMovies, ratings, reviews });
+      setShowAddModal(false);
+      setAddMovieSearchQuery("");
+    } catch (err) {
+      console.error("Failed to import TMDb movie", err);
+      setLoadError("Failed to import movie from TMDb.");
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const deleteMovie = async (movieId: number) => {
@@ -203,10 +199,12 @@ export default function WatchHistoryScreen() {
     delete nextRatings[movieId];
     const nextReviews = { ...reviews };
     delete nextReviews[movieId];
+    const nextMovies = watchedMovies.filter((movie) => movie.id !== movieId);
     setWatchedMovieIds(next);
+    setWatchedMovies(nextMovies);
     setRatings(nextRatings);
     setReviews(nextReviews);
-    await saveUserInfo({ watchedMovieIds: next, ratings: nextRatings, reviews: nextReviews });
+    await saveUserInfo({ watchedMovieIds: next, watchedMovies: nextMovies, ratings: nextRatings, reviews: nextReviews });
   };
 
   const handleDeleteFromInfo = async () => {
@@ -228,7 +226,7 @@ export default function WatchHistoryScreen() {
 
     const nextRatings = { ...ratings, [selectedMovieForRating.id]: score };
     setRatings(nextRatings);
-    await persistUserInfo(watchedMovieIds, nextRatings);
+    await persistUserInfo(watchedMovieIds, nextRatings, watchedMovies);
     setShowRatingOverlay(false);
     setSelectedMovieForRating(null);
   };
@@ -252,7 +250,7 @@ export default function WatchHistoryScreen() {
     }
 
     setReviews(nextReviews);
-    await saveUserInfo({ watchedMovieIds, ratings, reviews: nextReviews });
+    await saveUserInfo({ watchedMovieIds, watchedMovies, ratings, reviews: nextReviews });
     setShowReviewOverlay(false);
     setSelectedMovieForReview(null);
     setReviewDraft("");
@@ -382,12 +380,12 @@ export default function WatchHistoryScreen() {
         <ThemedText style={globalStyles.fabText}>+</ThemedText>
       </TouchableOpacity>
 
-      {/* Add modal (simple list of available movies to add) */}
+      {/* Add modal (TMDb search + import) */}
       <Modal visible={showAddModal} animationType="slide">
         <ThemedView style={styles.modalRoot}>
-          <ThemedText type="title">Add Movie to History</ThemedText>
+          <ThemedText type="title">Search TMDb</ThemedText>
           <TextInput
-            placeholder="Search catalogue..."
+            placeholder="Search TMDb..."
             value={addMovieSearchQuery}
             onChangeText={(text) => {
               setAddMovieSearchQuery(text);
@@ -395,23 +393,35 @@ export default function WatchHistoryScreen() {
             style={styles.searchBar}
           />
 
+          {isSearching ? (
+            <View style={{ paddingVertical: 16 }}>
+              <ActivityIndicator />
+            </View>
+          ) : null}
+
           <FlatList
             data={searchResults}
             keyExtractor={(m) => String(m.id)}
             renderItem={({ item }) => (
-              <TouchableOpacity style={styles.modalItem} onPress={() => addMovieFromCatalogue(item)}>
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={() => addMovieFromTmdb(item)}
+                disabled={isImporting}
+              >
                 <View style={globalStyles.posterPlaceholder}>
-                  {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.posterImage} /> : <ThemedText>Poster</ThemedText>}
+                  {item.poster_url ? <Image source={{ uri: item.poster_url }} style={styles.posterImage} /> : <ThemedText>Poster</ThemedText>}
                 </View>
                 <View style={styles.infoCol}>
                   <ThemedText type="subtitle">{item.title}</ThemedText>
-                  <ThemedText style={globalStyles.categories}>{(item.genres ?? []).join(", ")}</ThemedText>
+                  <ThemedText style={globalStyles.categories}>
+                    {item.release_date?.split("-")[0] || `TMDb #${item.id}`}
+                  </ThemedText>
                 </View>
               </TouchableOpacity>
             )}
             ListEmptyComponent={() => (
               <View style={styles.emptyContainer}>
-                <ThemedText>No movies found.</ThemedText>
+                <ThemedText>Search TMDb to add any movie.</ThemedText>
               </View>
             )}
             keyboardShouldPersistTaps="handled"

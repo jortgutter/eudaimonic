@@ -1,6 +1,6 @@
 
 
-const DEFAULT_HOST = 'http://145.116.129.10:8000';
+const DEFAULT_HOST = 'http://localhost:8000';
 
 const API_BASE_URL = DEFAULT_HOST;
 
@@ -43,6 +43,22 @@ export type CatalogMovie = {
   genres?: string[];
 };
 
+export type TmdbMovieSummary = {
+  id: number;
+  title: string;
+  overview?: string | null;
+  poster_url?: string | null;
+  release_date?: string | null;
+  vote_average: number;
+  popularity: number;
+  genre_ids: number[];
+};
+
+type ImportedMovieResponse = {
+  movie: CatalogMovie;
+  virtue_scores?: VirtueScoresResponse['virtue_scores'];
+};
+
 type VirtueScoresResponse = {
   virtue_scores?: {
     wisdom?: number | null;
@@ -63,15 +79,30 @@ export type VirtueScores = {
   transcendence: number;
 };
 
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = 15000): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const requestInit: RequestInit = {
+    ...init,
+    signal: init?.signal ?? controller.signal,
+  };
+
   let response: Response;
   try {
-    response = await fetch(url, init);
+    response = await fetch(url, requestInit);
   } catch (err) {
+    if (controller.signal.aborted) {
+      const msg = `Request timed out after ${timeoutMs}ms when fetching ${url}`;
+      console.error(msg);
+      throw new Error(msg);
+    }
+
     const msg = `Network error when fetching ${url}: ${err}`;
      
     console.error(msg);
     throw new Error(msg);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (!response.ok) {
@@ -125,6 +156,37 @@ export async function searchCatalogMovies(
 
   return fetchJson<CatalogMovie[]>(
     `${API_V1_BASE}/movies/search?${params.toString()}`
+  );
+}
+
+export async function searchTmdbMovies(
+  query: string,
+  page = 1,
+): Promise<TmdbMovieSummary[]> {
+  const q = query.trim();
+
+  if (!q) {
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    q,
+    page: String(page),
+  });
+
+  const response = await fetchJson<TmdbSearchResponse>(
+    `${API_V1_BASE}/tmdb/search?${params.toString()}`
+  );
+
+  return response.results ?? [];
+}
+
+export async function importTmdbMovieToCatalog(
+  tmdbId: number,
+): Promise<ImportedMovieResponse> {
+  return fetchJson<ImportedMovieResponse>(
+    `${API_V1_BASE}/movies/import/${tmdbId}`,
+    { method: 'POST' }
   );
 }
 

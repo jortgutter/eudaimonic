@@ -2,11 +2,25 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse
+from backend.app.services.catalog_import_service import CatalogImportService
 from backend.app.services.catalog_service import CatalogService
-from typing import List
 
 
 router = APIRouter(prefix="/movies", tags=["movies"])
+
+
+@router.post(
+    "/import/{tmdb_id}",
+    response_model=MovieVirtueScoresResponse,
+    summary="Import TMDb Movie Into Local Catalog",
+)
+def import_tmdb_movie(tmdb_id: int) -> MovieVirtueScoresResponse:
+    """Import a TMDb movie into the database and score it."""
+    CatalogImportService.import_movie(tmdb_id)
+    scores = CatalogService.get_movie_virtue_scores(tmdb_id)
+    if not scores:
+        raise HTTPException(status_code=500, detail="Movie imported, but virtue scores could not be loaded")
+    return scores
 
 @router.get(
     "/by-ids",

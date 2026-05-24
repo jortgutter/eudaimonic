@@ -1,10 +1,21 @@
 """FastAPI application entry point"""
+from pathlib import Path
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.core.config import get_settings
-from backend.app.api.v1 import router as api_v1_router
-from backend.app.db.database import engine, Base, sync_sqlite_schema
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+try:
+    from backend.app.core.config import get_settings
+    from backend.app.api.v1 import router as api_v1_router
+    from backend.app.db.database import engine, Base, sync_sqlite_schema
+except ModuleNotFoundError:
+    from app.core.config import get_settings
+    from app.api.v1 import router as api_v1_router
+    from app.db.database import engine, Base, sync_sqlite_schema
 
 settings = get_settings()
 
@@ -48,7 +59,7 @@ if __name__ == "__main__":
     print('starting app...')
 
     uvicorn.run(
-        "main:app",
+        "backend.main:app",
         host="0.0.0.0",
         port=8000,
         reload=settings.DEBUG,

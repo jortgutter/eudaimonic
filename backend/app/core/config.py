@@ -20,7 +20,7 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
     MOVIES_DB_PATH: str = Field(
-        default_factory=lambda: os.getenv("MOVIES_DB_PATH", "./app/movies.db"),
+        default_factory=lambda: os.getenv("MOVIES_DB_PATH", "./app/database/movies.db"),
         validation_alias="MOVIES_DB_PATH",
     )
     

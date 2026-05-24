@@ -1,7 +1,7 @@
 """Database setup and session management"""
 import os
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -45,11 +45,6 @@ def sync_sqlite_schema() -> None:
     inspector = inspect(engine)
     if not inspector.has_table("movies"):
         return
-
-    columns = {column["name"] for column in inspector.get_columns("movies")}
-    if "tmdb_id" not in columns:
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE movies ADD COLUMN tmdb_id INTEGER"))
 
 
 def get_db():

@@ -12,7 +12,7 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { getCatalogMovies, sendChatMessage } from "../../src/db/database";
+import { sendChatMessage } from "../../src/db/database";
 import { loadUserInfo } from "../../src/storage/userinfo";
 
 type ChatMessage = {
@@ -39,13 +39,9 @@ export default function ChatScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [userInfo, movies] = await Promise.all([
-          loadUserInfo(),
-          getCatalogMovies(100),
-        ]);
+        const userInfo = await loadUserInfo();
 
-        const watched = movies
-          .filter((m) => userInfo.watchedMovieIds.includes(m.id))
+        const watched = (userInfo.watchedMovies ?? [])
           .map((m) => ({
             id: m.id,
             title: m.title,

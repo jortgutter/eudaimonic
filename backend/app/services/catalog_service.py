@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from fastapi import HTTPException, status, Query
+from fastapi import HTTPException, status
 
 from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, VirtueScoreSet
 
@@ -18,16 +18,16 @@ class CatalogService:
     @staticmethod
     def _candidate_paths() -> list[Path]:
         env_path = os.getenv("MOVIES_DB_PATH")
+        backend_root = Path(__file__).resolve().parents[2]
         candidates: list[Path] = []
         if env_path:
             candidates.append(Path(env_path).expanduser())
 
-        backend_root = Path(__file__).resolve().parents[2]
         candidates.extend(
             [
                 backend_root / "movies.db",
                 backend_root / "data" / "movies.db",
-                backend_root / "app" / "movies.db",
+                backend_root / "app" / "database" / "movies.db",
             ]
         )
         return candidates
@@ -77,7 +77,6 @@ class CatalogService:
 
         def v(key: str) -> float:
             return float(row[key]) if key in row.keys() and row[key] is not None else 0.0
-        print(row.keys())
         return MovieCatalogItem(
             id=int(row["id"]),
             title=str(row["title"] or "Untitled"),
@@ -225,6 +224,8 @@ class CatalogService:
                     Transcendence
                 FROM movie_virtue_scores_wide
                 WHERE movie_id = ?
+                ORDER BY rowid DESC
+                LIMIT 1
                 """,
                 (movie_id,),
             ).fetchone()

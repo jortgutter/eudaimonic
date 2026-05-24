@@ -47,3 +47,8 @@ app-example
 
 #database files
 *.db
+.env
+backend/app/movies.db-wal
+backend/app/movies.db-shm
+backend/app/database/movies.db-wal
+backend/app/database/movies.db-shm

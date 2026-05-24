@@ -1,16 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
+import type { CatalogMovie } from "../db/database";
+
 export const USER_INFO_STORAGE_KEY = "eudaimonic.userinfo.v1";
 
 export type UserInfo = {
   watchedMovieIds: number[];
+  watchedMovies: CatalogMovie[];
   ratings: Record<string, number>;
   reviews: Record<string, string>;
 };
 
 const DEFAULT_USER_INFO: UserInfo = {
   watchedMovieIds: [],
+  watchedMovies: [],
   ratings: {},
   reviews: {},
 };
@@ -36,6 +40,11 @@ export async function loadUserInfo(): Promise<UserInfo> {
     return {
       watchedMovieIds: Array.isArray(parsed.watchedMovieIds)
         ? parsed.watchedMovieIds.filter((id): id is number => typeof id === "number")
+        : [],
+      watchedMovies: Array.isArray(parsed.watchedMovies)
+        ? parsed.watchedMovies.filter((movie): movie is CatalogMovie =>
+            Boolean(movie) && typeof movie === "object" && typeof (movie as CatalogMovie).id === "number"
+          )
         : [],
       ratings:
         parsed.ratings && typeof parsed.ratings === "object"
