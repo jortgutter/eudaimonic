@@ -1,13 +1,15 @@
 import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { useFocusEffect } from "@react-navigation/native";
 import { Image } from "expo-image";
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
 import { getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
+import { loadSelectedProviderIds, loadUserInfo } from "../../src/storage/userinfo";
 // type DbMovie = {
 //   id: number;
 //   title: string;
@@ -103,7 +105,8 @@ export default function HomeScreen() {
   const [selectedMovie, setSelectedMovie] = useState<ScoredMovie | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
-  const [watchedLoaded, setWatchedLoaded] = useState(false);
+  const [selectedProviderIds, setSelectedProviderIds] = useState<number[]>([]);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [toggles, setToggles] = useState({
     Wisdom: { state: false, deactColor: "#457", actColor: "#9af" },
     Humanity: { state: false, deactColor: "#172", actColor: "#2e4" },
@@ -114,6 +117,39 @@ export default function HomeScreen() {
   });
 
   const [scoredMovies, setDbMovies] = useState<ScoredMovie[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isCancelled = false;
+
+      const loadPreferenceState = async () => {
+        try {
+          setPreferencesLoaded(false);
+
+          const [userInfo, providerIds] = await Promise.all([
+            loadUserInfo(),
+            loadSelectedProviderIds(),
+          ]);
+          if (isCancelled) return;
+
+          setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
+          setSelectedProviderIds(providerIds);
+          setPreferencesLoaded(true);
+        } catch (err) {
+          console.error("Failed to load recommendation filters", err);
+          if (!isCancelled) {
+            setPreferencesLoaded(true);
+          }
+        }
+      };
+
+      loadPreferenceState();
+
+      return () => {
+        isCancelled = true;
+      };
+    }, [])
+  );
 
 
   const activeTraits: TraitOptions = useMemo(() => {
@@ -163,16 +199,20 @@ export default function HomeScreen() {
 //   };
 // }, [watchedLoaded, watchedIdsKey, activeTraits]);
   useEffect(() => {
+    if (!preferencesLoaded) return;
+
     const run = async () => {
       const movies = await getTopMoviesByTraits(
         activeTraits,
-        watchedMovieIds
+        watchedMovieIds,
+        selectedProviderIds,
+        "NL"
       );
       setDbMovies(movies);
     };
 
     run();
-  }, [activeTraits, watchedMovieIds]);
+  }, [activeTraits, watchedMovieIds, selectedProviderIds, preferencesLoaded]);
 
 
   const sortedMovies = [...scoredMovies].sort(
@@ -337,6 +377,9 @@ export default function HomeScreen() {
             <ThemedText type="subtitle">Recommendations</ThemedText>
             <Text style={styles.recommendationsSubtext}>
               {sortedMovies.length} matching movies
+              {selectedProviderIds.length > 0
+                ? ` on ${selectedProviderIds.length} provider${selectedProviderIds.length > 1 ? "s" : ""}`
+                : ""}
             </Text>
           </View>
 

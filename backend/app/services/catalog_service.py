@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
+import logging
 
-from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, VirtueScoreSet
+from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, VirtueScoreSet, WatchProviderItem
 
 
 class CatalogService:
@@ -255,6 +256,8 @@ class CatalogService:
         rating_weight: float,
         limit: int = 20,
         exclude_ids: str | None = None,
+        provider_ids: str | None = None,
+        country_code: str = "NL",
     ) -> list[MovieCatalogItem]:
 
         exclude_set: set[int] = set()
@@ -266,28 +269,41 @@ class CatalogService:
                 if x.strip().isdigit()
             }
 
-        exclude_clause = ""
-        params = {
-            "wisdom": wisdom,
-            "courage": courage,
-            "humanity": humanity,
-            "justice": justice,
-            "temperance": temperance,
-            "transcendence": transcendence,
-            "rating_weight": rating_weight,
-            "limit": limit,
-        }
+        provider_set: set[int] = set()
+        if provider_ids:
+            provider_set = {
+                int(x)
+                for x in provider_ids.split(",")
+                if x.strip().isdigit()
+            }
 
-        # Only add exclusion SQL if needed
+        where_clauses: list[str] = []
+
         if exclude_set:
-            placeholders = ",".join(["?"] * len(exclude_set))
-            exclude_clause = f"WHERE m.id NOT IN ({placeholders})"
-            exclude_params = tuple(exclude_set)
-        else:
-            exclude_clause = ""
-            exclude_params = tuple()
+            placeholders = ",".join([f":exclude_{i}" for i, _ in enumerate(sorted(exclude_set))])
+            where_clauses.append(f"m.id NOT IN ({placeholders})")
 
-        query = f"""
+        if provider_set:
+            provider_placeholders = ",".join([f":provider_{i}" for i, _ in enumerate(sorted(provider_set))])
+            where_clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM watch_providers wp
+                    WHERE wp.movie_id = m.id
+                      AND UPPER(wp.country_code) = UPPER(:country_code)
+                      AND wp.provider_id IN ({provider_placeholders})
+                )
+                """.replace("{provider_placeholders}", provider_placeholders)
+            )
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        # Build SQL using named parameters so repeated trait params don't require
+        # careful positional ordering. Provider placeholders are created as
+        # :provider_0, :provider_1, ... and country code is :country_code.
+        def build_query(min_reviews: int) -> str:
+            return f"""
             SELECT
                 m.id,
                 m.title,
@@ -325,22 +341,49 @@ class CatalogService:
             LEFT JOIN movie_genres mg ON mg.movie_id = m.id
             LEFT JOIN genres g ON g.id = mg.genre_id
 
-            {exclude_clause}
+            {where_sql}
 
             GROUP BY m.id
-            HAVING COUNT(r.id) >= 10
+            HAVING COUNT(r.id) >= {min_reviews}
 
             ORDER BY score ASC
             LIMIT :limit
         """
 
+        # Build parameter mapping for named parameters
+        params_map: dict[str, Any] = {
+            "wisdom": wisdom,
+            "courage": courage,
+            "humanity": humanity,
+            "justice": justice,
+            "temperance": temperance,
+            "transcendence": transcendence,
+            "rating_weight": rating_weight,
+            "limit": limit,
+        }
+
+        # Add where params into params_map; provider placeholders are named provider_0, provider_1, ...
+        if provider_set:
+            for i, pid in enumerate(sorted(provider_set)):
+                params_map[f"provider_{i}"] = pid
+            params_map["country_code"] = country_code
+
+        # If exclude_set is present, add exclude placeholders
+        if exclude_set:
+            for i, eid in enumerate(sorted(exclude_set)):
+                params_map[f"exclude_{i}"] = eid
+
+        logger = logging.getLogger(__name__)
+
         with CatalogService._connect() as connection:
-            if exclude_set:
-                rows = connection.execute(query, (*exclude_params, params["wisdom"], params["courage"], params["humanity"],
-                                                params["justice"], params["temperance"], params["transcendence"],
-                                                params["rating_weight"], params["limit"])).fetchall()
-            else:
-                rows = connection.execute(query, params).fetchall()
+            # Lower review count requirement if filtering by provider, since that may limit results significantly
+            min_reviews = 1 if provider_set else 10
+            final_sql = build_query(min_reviews)
+            logger.info("recommend: executing query; sql len=%d params=%d", len(final_sql), len(params_map))
+            logger.debug("recommend: sql=\n%s", final_sql)
+            logger.debug("recommend: params=%r", params_map)
+
+            rows = connection.execute(final_sql, params_map).fetchall()
 
         items: list[MovieCatalogItem] = []
 
@@ -349,6 +392,40 @@ class CatalogService:
             items.append(CatalogService._row_to_movie(row, genres=genres))
 
         return items
+
+    @staticmethod
+    def list_watch_providers(
+        country_code: str = "NL",
+        provider_type: str | None = None,
+    ) -> list[WatchProviderItem]:
+        query = """
+            SELECT DISTINCT
+                provider_id,
+                provider_name
+            FROM watch_providers
+            WHERE UPPER(country_code) = UPPER(?)
+        """
+        params: list[Any] = [country_code]
+
+        if provider_type:
+            query += " AND LOWER(provider_type) = LOWER(?)"
+            params.append(provider_type)
+
+        query += " ORDER BY provider_name ASC"
+
+        with CatalogService._connect() as connection:
+            rows = connection.execute(query, tuple(params)).fetchall()
+
+        providers: list[WatchProviderItem] = []
+        for row in rows:
+            providers.append(
+                WatchProviderItem(
+                    provider_id=int(row["provider_id"]),
+                    provider_name=str(row["provider_name"] or "Unknown"),
+                )
+            )
+
+        return providers
 
 
     @staticmethod

@@ -26,6 +26,13 @@ class MovieCatalogItem(BaseModel):
     Transcendence: float
 
 
+class WatchProviderItem(BaseModel):
+    """Distinct watch provider for a region."""
+
+    provider_id: int
+    provider_name: str
+
+
 class VirtueScoreSet(BaseModel):
     """Virtue scores indexed for a movie."""
 

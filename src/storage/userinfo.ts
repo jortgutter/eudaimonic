@@ -4,6 +4,7 @@ import * as SecureStore from "expo-secure-store";
 import type { CatalogMovie } from "../db/database";
 
 export const USER_INFO_STORAGE_KEY = "eudaimonic.userinfo.v1";
+export const WATCH_PROVIDER_STORAGE_KEY = "eudaimonic.watchproviders.v1";
 
 export type UserInfo = {
   watchedMovieIds: number[];
@@ -96,6 +97,46 @@ export async function clearWatchHistory(): Promise<void> {
       return;
     }
 
+    throw err;
+  }
+}
+
+export async function loadSelectedProviderIds(): Promise<number[]> {
+  try {
+    let raw: string | null = null;
+    try {
+      raw = await AsyncStorage.getItem(WATCH_PROVIDER_STORAGE_KEY);
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (msg.includes("Native module is null") || msg.includes("cannot access legacy storage")) {
+        raw = await SecureStore.getItemAsync(WATCH_PROVIDER_STORAGE_KEY);
+      } else {
+        throw err;
+      }
+    }
+
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((id): id is number => typeof id === "number");
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSelectedProviderIds(providerIds: number[]): Promise<void> {
+  const uniqueIds = Array.from(new Set(providerIds.filter((id) => Number.isInteger(id))));
+  const payload = JSON.stringify(uniqueIds);
+
+  try {
+    await AsyncStorage.setItem(WATCH_PROVIDER_STORAGE_KEY, payload);
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (msg.includes("Native module is null") || msg.includes("cannot access legacy storage")) {
+      await SecureStore.setItemAsync(WATCH_PROVIDER_STORAGE_KEY, payload);
+      return;
+    }
     throw err;
   }
 }

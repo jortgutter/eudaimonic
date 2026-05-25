@@ -1,7 +1,7 @@
 """Local movie catalog endpoints"""
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse
+from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, WatchProviderItem
 from backend.app.services.catalog_import_service import CatalogImportService
 from backend.app.services.catalog_service import CatalogService
 
@@ -61,6 +61,8 @@ def recommend_movies(
     rating_weight: float = Query(..., ge=0, le=1),
     limit: int = Query(20, ge=1, le=100),
     exclude_ids: str | None = Query(None),
+    provider_ids: str | None = Query(None),
+    country_code: str = Query("NL", min_length=2, max_length=2),
 ) -> list[MovieCatalogItem]:
     """Recommend movies based on virtue trait similarity."""
 
@@ -73,7 +75,25 @@ def recommend_movies(
         transcendence=transcendence,
         rating_weight=rating_weight,
         limit=limit,
-        exclude_ids=exclude_ids
+        exclude_ids=exclude_ids,
+        provider_ids=provider_ids,
+        country_code=country_code,
+    )
+
+
+@router.get(
+    "/watch-providers",
+    response_model=list[WatchProviderItem],
+    summary="List Watch Providers",
+)
+def list_watch_providers(
+    country_code: str = Query("NL", min_length=2, max_length=2),
+    provider_type: str | None = Query(None),
+) -> list[WatchProviderItem]:
+    """Return watch providers available in a country."""
+    return CatalogService.list_watch_providers(
+        country_code=country_code,
+        provider_type=provider_type,
     )
 
 

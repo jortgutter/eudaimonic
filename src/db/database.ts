@@ -54,6 +54,11 @@ export type TmdbMovieSummary = {
   genre_ids: number[];
 };
 
+export type WatchProvider = {
+  provider_id: number;
+  provider_name: string;
+};
+
 type ImportedMovieResponse = {
   movie: CatalogMovie;
   virtue_scores?: VirtueScoresResponse['virtue_scores'];
@@ -239,6 +244,11 @@ export async function getMoviesByIds(ids: number[]): Promise<CatalogMovie[]> {
   );
 }
 
+export async function getWatchProviders(countryCode = "NL"): Promise<WatchProvider[]> {
+  const params = new URLSearchParams({ country_code: countryCode });
+  return fetchJson<WatchProvider[]>(`${API_V1_BASE}/movies/watch-providers?${params.toString()}`);
+}
+
 function calculateMatchScore(movie: ScoredMovie, traits: TraitOptions): number {
   const vals: number[] = [];
   if (traits.Wisdom) vals.push(movie.Wisdom ?? 0);
@@ -303,8 +313,10 @@ function calculateMatchScore(movie: ScoredMovie, traits: TraitOptions): number {
 // }
 export async function getTopMoviesByTraits(
   traits: TraitOptions,
-  excludeIds: number[] = []
-): Promise<CatalogMovie[]> {
+  excludeIds: number[] = [],
+  providerIds: number[] = [],
+  countryCode = "NL"
+): Promise<ScoredMovie[]> {
 
   const hasEnabledTraits = Object.values(traits).some(Boolean);
   // If nothing is selected, treat everything as enabled
@@ -334,7 +346,12 @@ export async function getTopMoviesByTraits(
     query.append("exclude_ids", excludeIds.join(","))
   }
 
-  const movies = await fetchJson<CatalogMovie[]>(
+  if (providerIds.length > 0) {
+    query.append("provider_ids", providerIds.join(","));
+    query.append("country_code", countryCode);
+  }
+
+  const movies = await fetchJson<ScoredMovie[]>(
     `${API_V1_BASE}/movies/recommend?${query.toString()}`
   );
 
