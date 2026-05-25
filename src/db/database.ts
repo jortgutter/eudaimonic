@@ -54,6 +54,13 @@ export type TmdbMovieSummary = {
   genre_ids: number[];
 };
 
+type TmdbSearchResponse = {
+  page: number;
+  total_pages: number;
+  total_results: number;
+  results: TmdbMovieSummary[];
+};
+
 export type WatchProvider = {
   provider_id: number;
   provider_name: string;
@@ -249,14 +256,26 @@ export async function getWatchProviders(countryCode = "NL"): Promise<WatchProvid
   return fetchJson<WatchProvider[]>(`${API_V1_BASE}/movies/watch-providers?${params.toString()}`);
 }
 
-function calculateMatchScore(movie: ScoredMovie, traits: TraitOptions): number {
+export function calculateMatchScore(movie: ScoredMovie, traits: TraitOptions): number {
+  const hasEnabledTraits = Object.values(traits).some(Boolean);
+  const effectiveTraits: TraitOptions = hasEnabledTraits
+    ? traits
+    : {
+        Wisdom: true,
+        Courage: true,
+        Humanity: true,
+        Justice: true,
+        Temperance: true,
+        Transcendence: true,
+      };
+
   const vals: number[] = [];
-  if (traits.Wisdom) vals.push(movie.Wisdom ?? 0);
-  if (traits.Courage) vals.push(movie.Courage ?? 0);
-  if (traits.Humanity) vals.push(movie.Humanity ?? 0);
-  if (traits.Justice) vals.push(movie.Justice ?? 0);
-  if (traits.Temperance) vals.push(movie.Temperance ?? 0);
-  if (traits.Transcendence) vals.push(movie.Transcendence ?? 0);
+  if (effectiveTraits.Wisdom) vals.push(movie.Wisdom ?? 0);
+  if (effectiveTraits.Courage) vals.push(movie.Courage ?? 0);
+  if (effectiveTraits.Humanity) vals.push(movie.Humanity ?? 0);
+  if (effectiveTraits.Justice) vals.push(movie.Justice ?? 0);
+  if (effectiveTraits.Temperance) vals.push(movie.Temperance ?? 0);
+  if (effectiveTraits.Transcendence) vals.push(movie.Transcendence ?? 0);
 
   if (vals.length === 0) return 0;
   return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100);

@@ -8,7 +8,7 @@ import {
   Modal,
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
-import { getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
+import { getTopMoviesByTraits, ScoredMovie, TraitOptions, calculateMatchScore } from "../../src/db/database";
 import { loadSelectedProviderIds, loadUserInfo } from "../../src/storage/userinfo";
 // type DbMovie = {
 //   id: number;
@@ -208,7 +208,13 @@ export default function HomeScreen() {
         selectedProviderIds,
         "NL"
       );
-      setDbMovies(movies);
+      // Recompute match score client-side so it reflects the currently selected virtues
+      const mapped = movies.map((m) => ({
+        ...m,
+        match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
+      }));
+
+      setDbMovies(mapped);
     };
 
     run();
