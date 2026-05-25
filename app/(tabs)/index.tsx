@@ -3,8 +3,9 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useFocusEffect } from "@react-navigation/native";
 import { Image } from "expo-image";
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
@@ -107,6 +108,7 @@ export default function HomeScreen() {
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
   const [selectedProviderIds, setSelectedProviderIds] = useState<number[]>([]);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
   const [toggles, setToggles] = useState({
     Wisdom: { state: false, deactColor: "#457", actColor: "#9af" },
     Humanity: { state: false, deactColor: "#172", actColor: "#2e4" },
@@ -117,6 +119,7 @@ export default function HomeScreen() {
   });
 
   const [scoredMovies, setDbMovies] = useState<ScoredMovie[]>([]);
+  const recommendationRequestIdRef = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -201,20 +204,31 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!preferencesLoaded) return;
 
-    const run = async () => {
-      const movies = await getTopMoviesByTraits(
-        activeTraits,
-        watchedMovieIds,
-        selectedProviderIds,
-        "NL"
-      );
-      // Recompute match score client-side so it reflects the currently selected virtues
-      const mapped = movies.map((m) => ({
-        ...m,
-        match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
-      }));
+    const requestId = ++recommendationRequestIdRef.current;
+    setIsRecommendationsLoading(true);
 
-      setDbMovies(mapped);
+    const run = async () => {
+      try {
+        const movies = await getTopMoviesByTraits(
+          activeTraits,
+          watchedMovieIds,
+          selectedProviderIds,
+          "NL"
+        );
+        // Compute the match score for each movie based on the active traits
+        const mapped = movies.map((m) => ({
+          ...m,
+          match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
+        }));
+
+        setDbMovies(mapped);
+      } catch (err) {
+        console.error("Failed to load recommendations", err);
+      } finally {
+        if (recommendationRequestIdRef.current === requestId) {
+          setIsRecommendationsLoading(false);
+        }
+      }
     };
 
     run();
@@ -361,9 +375,7 @@ export default function HomeScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.text}>
-                {key} {value ? "" : ""}
-              </Text>
+              <Text style={styles.text}>{key}</Text>
             </Pressable>
           );
         })}
@@ -380,7 +392,10 @@ export default function HomeScreen() {
       <View style={styles.recommendationsSection}>
         <View style={styles.recommendationsHeader}>
           <View>
-            <ThemedText type="subtitle">Recommendations</ThemedText>
+            <View style={styles.recommendationsTitleRow}>
+              <ThemedText type="subtitle">Recommendations</ThemedText>
+              {isRecommendationsLoading ? <ActivityIndicator size="small" /> : null}
+            </View>
             <Text style={styles.recommendationsSubtext}>
               {sortedMovies.length} matching movies
               {selectedProviderIds.length > 0
@@ -564,7 +579,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 3,
   },
-
   active: {
     // lifted look
     elevation: 8,
@@ -603,6 +617,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     opacity: 0.7,
     fontSize: 12,
+  },
+  recommendationsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   recommendationsPill: {
     backgroundColor: "rgba(255,255,255,0.1)",
