@@ -63,6 +63,7 @@ export default function WatchHistoryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [importingMovieTitle, setImportingMovieTitle] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -174,6 +175,7 @@ export default function WatchHistoryScreen() {
     if (isImporting) return;
 
     setIsImporting(true);
+    setImportingMovieTitle(movie.title);
     try {
       const imported = await importTmdbMovieToCatalog(movie.id);
       const importedMovie = imported.movie;
@@ -190,6 +192,7 @@ export default function WatchHistoryScreen() {
       setLoadError("Failed to import movie from TMDb.");
     } finally {
       setIsImporting(false);
+      setImportingMovieTitle(null);
     }
   };
 
@@ -383,7 +386,7 @@ export default function WatchHistoryScreen() {
       {/* Add modal (TMDb search + import) */}
       <Modal visible={showAddModal} animationType="slide">
         <ThemedView style={styles.modalRoot}>
-          <ThemedText type="title">Search TMDb</ThemedText>
+          <ThemedText type="title">Search movie to add</ThemedText>
           <TextInput
             placeholder="Search TMDb..."
             value={addMovieSearchQuery}
@@ -391,6 +394,7 @@ export default function WatchHistoryScreen() {
               setAddMovieSearchQuery(text);
             }}
             style={styles.searchBar}
+            editable={!isImporting}
           />
 
           {isSearching ? (
@@ -428,9 +432,19 @@ export default function WatchHistoryScreen() {
             showsVerticalScrollIndicator={false}
           />
 
-          <TouchableOpacity style={globalStyles.infoCloseButton} onPress={() => setShowAddModal(false)}>
+          <TouchableOpacity style={globalStyles.infoCloseButton} onPress={() => setShowAddModal(false)} disabled={isImporting}>
             <ThemedText style={globalStyles.infoCloseButtonText}>Close</ThemedText>
           </TouchableOpacity>
+
+          {isImporting ? (
+            <View style={styles.importOverlay}>
+              <ActivityIndicator size="large" />
+              <ThemedText style={styles.importOverlayTitle}>Adding movie...</ThemedText>
+              <ThemedText style={styles.importOverlaySubtitle} numberOfLines={1}>
+                {importingMovieTitle ?? "Please wait"}
+              </ThemedText>
+            </View>
+          ) : null}
         </ThemedView>
       </Modal>
 
@@ -637,6 +651,21 @@ const styles = StyleSheet.create({
   emptyContainer: {
     padding: 24,
     alignItems: "center",
+  },
+  importOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: 24,
+  },
+  importOverlayTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  importOverlaySubtitle: {
+    opacity: 0.85,
+    textAlign: "center",
   },
   ratingRow: {
     flexDirection: "row",
