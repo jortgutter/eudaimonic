@@ -19,6 +19,7 @@ import {
   TmdbMovieSummary,
   importTmdbMovieToCatalog,
   getMovieVirtueScores,
+  resolveTmdbGenres,
   searchTmdbMovies,
   VirtueScores
 } from "../../src/db/database";
@@ -177,14 +178,26 @@ export default function WatchHistoryScreen() {
     setIsImporting(true);
     setImportingMovieTitle(movie.title);
     try {
-      const imported = await importTmdbMovieToCatalog(movie.id);
-      const importedMovie = imported.movie;
-      const nextIds = Array.from(new Set([...watchedMovieIds, importedMovie.id]));
-      const nextMovies = [importedMovie, ...watchedMovies.filter((item) => item.id !== importedMovie.id)];
+      const optimisticMovie: CatalogMovie = {
+        id: movie.id,
+        title: movie.title,
+        summary: movie.overview ?? null,
+        image_url: movie.poster_url ?? null,
+        vote_average: movie.vote_average ?? null,
+        release_date: movie.release_date ?? null,
+        adult: false,
+        genres: resolveTmdbGenres(movie.genre_ids),
+      };
+
+      const nextIds = Array.from(new Set([...watchedMovieIds, optimisticMovie.id]));
+      const nextMovies = [optimisticMovie, ...watchedMovies.filter((item) => item.id !== optimisticMovie.id)];
 
       setWatchedMovieIds(nextIds);
       setWatchedMovies(nextMovies);
       await saveUserInfo({ watchedMovieIds: nextIds, watchedMovies: nextMovies, ratings, reviews });
+      void importTmdbMovieToCatalog(movie.id).catch((err) => {
+        console.error("Failed to import TMDb movie", err);
+      });
       setShowAddModal(false);
       setAddMovieSearchQuery("");
     } catch (err) {

@@ -54,6 +54,35 @@ export type TmdbMovieSummary = {
   genre_ids: number[];
 };
 
+// Hardcoded TMDb genres to speed things up
+const TMDB_GENRE_NAMES: Record<number, string> = {
+  28: "Action",
+  12: "Adventure",
+  16: "Animation",
+  35: "Comedy",
+  80: "Crime",
+  99: "Documentary",
+  18: "Drama",
+  10751: "Family",
+  14: "Fantasy",
+  36: "History",
+  27: "Horror",
+  10402: "Music",
+  9648: "Mystery",
+  10749: "Romance",
+  878: "Science Fiction",
+  10770: "TV Movie",
+  53: "Thriller",
+  10752: "War",
+  37: "Western",
+};
+
+export function resolveTmdbGenres(genreIds: number[]): string[] {
+  return genreIds
+    .map((genreId) => TMDB_GENRE_NAMES[genreId])
+    .filter((genreName): genreName is string => Boolean(genreName));
+}
+
 type TmdbSearchResponse = {
   page: number;
   total_pages: number;
@@ -64,11 +93,6 @@ type TmdbSearchResponse = {
 export type WatchProvider = {
   provider_id: number;
   provider_name: string;
-};
-
-type ImportedMovieResponse = {
-  movie: CatalogMovie;
-  virtue_scores?: VirtueScoresResponse['virtue_scores'];
 };
 
 type VirtueScoresResponse = {
@@ -195,11 +219,17 @@ export async function searchTmdbMovies(
 
 export async function importTmdbMovieToCatalog(
   tmdbId: number,
-): Promise<ImportedMovieResponse> {
-  return fetchJson<ImportedMovieResponse>(
-    `${API_V1_BASE}/movies/import/${tmdbId}`,
-    { method: 'POST' }
-  );
+): Promise<void> {
+  const response = await fetch(`${API_V1_BASE}/movies/import/${tmdbId}`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '<no body>');
+    const msg = `Request failed (${response.status}) for ${API_V1_BASE}/movies/import/${tmdbId}: ${text}`;
+    console.error(msg);
+    throw new Error(msg);
+  }
 }
 
 export async function getMovieVirtueScores(movieId: number): Promise<VirtueScores> {

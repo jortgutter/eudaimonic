@@ -721,3 +721,9 @@ class CatalogImportService:
             "summary": summary,
             "scores": scores,
         }
+
+    @staticmethod
+    def import_movie_with_scores(tmdb_movie_id: int) -> None:
+        """Import a movie and generate virtue scores."""
+
+        CatalogImportService.import_movie(tmdb_movie_id)

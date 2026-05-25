@@ -1,5 +1,5 @@
 """Local movie catalog endpoints"""
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 
 from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, WatchProviderItem
 from backend.app.services.catalog_import_service import CatalogImportService
@@ -11,16 +11,13 @@ router = APIRouter(prefix="/movies", tags=["movies"])
 
 @router.post(
     "/import/{tmdb_id}",
-    response_model=MovieVirtueScoresResponse,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="Import TMDb Movie Into Local Catalog",
 )
-def import_tmdb_movie(tmdb_id: int) -> MovieVirtueScoresResponse:
-    """Import a TMDb movie into the database and score it."""
-    CatalogImportService.import_movie(tmdb_id)
-    scores = CatalogService.get_movie_virtue_scores(tmdb_id)
-    if not scores:
-        raise HTTPException(status_code=500, detail="Movie imported, but virtue scores could not be loaded")
-    return scores
+def import_tmdb_movie(tmdb_id: int, background_tasks: BackgroundTasks) -> dict[str, object]:
+    """Queue a TMDb movie import and return immediately."""
+    background_tasks.add_task(CatalogImportService.import_movie_with_scores, tmdb_id)
+    return {"status": "queued", "tmdb_id": tmdb_id}
 
 @router.get(
     "/by-ids",
