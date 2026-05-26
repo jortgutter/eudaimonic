@@ -16,6 +16,13 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+## How to host
+1. `npx expo export --platform web`
+2. `npm install -g firebase-tools`
+3. `firebase login`
+4. `firebase init`
+5. `firebase deploy`
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
