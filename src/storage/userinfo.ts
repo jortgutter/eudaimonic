@@ -1,16 +1,21 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
+import type { CatalogMovie } from "../db/database";
+
 export const USER_INFO_STORAGE_KEY = "eudaimonic.userinfo.v1";
+export const WATCH_PROVIDER_STORAGE_KEY = "eudaimonic.watchproviders.v1";
 
 export type UserInfo = {
   watchedMovieIds: number[];
+  watchedMovies: CatalogMovie[];
   ratings: Record<string, number>;
   reviews: Record<string, string>;
 };
 
 const DEFAULT_USER_INFO: UserInfo = {
   watchedMovieIds: [],
+  watchedMovies: [],
   ratings: {},
   reviews: {},
 };
@@ -36,6 +41,11 @@ export async function loadUserInfo(): Promise<UserInfo> {
     return {
       watchedMovieIds: Array.isArray(parsed.watchedMovieIds)
         ? parsed.watchedMovieIds.filter((id): id is number => typeof id === "number")
+        : [],
+      watchedMovies: Array.isArray(parsed.watchedMovies)
+        ? parsed.watchedMovies.filter((movie): movie is CatalogMovie =>
+            Boolean(movie) && typeof movie === "object" && typeof (movie as CatalogMovie).id === "number"
+          )
         : [],
       ratings:
         parsed.ratings && typeof parsed.ratings === "object"
@@ -67,6 +77,64 @@ export async function saveUserInfo(data: UserInfo): Promise<void> {
     const msg = String(err?.message || err);
     if (msg.includes("Native module is null") || msg.includes("cannot access legacy storage")) {
       await SecureStore.setItemAsync(USER_INFO_STORAGE_KEY, payload);
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function clearWatchHistory(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(USER_INFO_STORAGE_KEY);
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+
+    if (
+      msg.includes("Native module is null") ||
+      msg.includes("cannot access legacy storage")
+    ) {
+      await SecureStore.deleteItemAsync(USER_INFO_STORAGE_KEY);
+      return;
+    }
+
+    throw err;
+  }
+}
+
+export async function loadSelectedProviderIds(): Promise<number[]> {
+  try {
+    let raw: string | null = null;
+    try {
+      raw = await AsyncStorage.getItem(WATCH_PROVIDER_STORAGE_KEY);
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (msg.includes("Native module is null") || msg.includes("cannot access legacy storage")) {
+        raw = await SecureStore.getItemAsync(WATCH_PROVIDER_STORAGE_KEY);
+      } else {
+        throw err;
+      }
+    }
+
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((id): id is number => typeof id === "number");
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSelectedProviderIds(providerIds: number[]): Promise<void> {
+  const uniqueIds = Array.from(new Set(providerIds.filter((id) => Number.isInteger(id))));
+  const payload = JSON.stringify(uniqueIds);
+
+  try {
+    await AsyncStorage.setItem(WATCH_PROVIDER_STORAGE_KEY, payload);
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (msg.includes("Native module is null") || msg.includes("cannot access legacy storage")) {
+      await SecureStore.setItemAsync(WATCH_PROVIDER_STORAGE_KEY, payload);
       return;
     }
     throw err;

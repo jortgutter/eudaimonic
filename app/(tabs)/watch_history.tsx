@@ -1,14 +1,14 @@
 import { Image } from "expo-image";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
   FlatList,
   Modal,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   View,
-  Dimensions,
 } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
@@ -16,14 +16,18 @@ import { ThemedView } from "@/components/themed-view";
 import { globalStyles } from "@/constants/globalStyles";
 import {
   CatalogMovie,
-  getCatalogMovies,
   getMovieVirtueScores,
-  VirtueScores,
+  importTmdbMovieToCatalog,
+  resolveTmdbGenres,
+  searchTmdbMovies,
+  TmdbMovieSummary,
+  VirtueScores
 } from "../../src/db/database";
-import { loadUserInfo, saveUserInfo } from "../../src/storage/userinfo";
-import { IconSymbol } from "@/components/ui/icon-symbol";
-import Ionicons from "@expo/vector-icons/build/Ionicons";
-
+import {
+  clearWatchHistory,
+  loadUserInfo,
+  saveUserInfo
+} from "../../src/storage/userinfo";
 type RatingsMap = Record<number, number>;
 type ReviewsMap = Record<number, string>;
 
@@ -39,8 +43,8 @@ const EMPTY_VIRTUE_SCORES: VirtueScores = {
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 export default function WatchHistoryScreen() {
-  const [catalogMovies, setCatalogMovies] = useState<CatalogMovie[]>([]);
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
+  const [watchedMovies, setWatchedMovies] = useState<CatalogMovie[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [ratings, setRatings] = useState<RatingsMap>({});
   const [reviews, setReviews] = useState<ReviewsMap>({});
@@ -59,16 +63,60 @@ export default function WatchHistoryScreen() {
   const [addMovieSearchQuery, setAddMovieSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importingMovieTitle, setImportingMovieTitle] = useState<string | null>(null);
+
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const timeout = setTimeout(async () => {
+      const q = addMovieSearchQuery.trim();
+
+      // cancel previous request
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setIsSearching(true);
+
+      try {
+        if (!q) {
+          setSearchResults([]);
+          return;
+        }
+
+        const results = await searchTmdbMovies(q, 1);
+
+        // ignore aborted responses
+        if (controller.signal.aborted) return;
+
+        setSearchResults(results);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+
+        console.error("Search failed", err);
+
+        // fallback instead of empty UI
+        setSearchResults([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [addMovieSearchQuery]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [movies, rawUserInfo] = await Promise.all([getCatalogMovies(100), loadUserInfo()]);
+        const rawUserInfo = await loadUserInfo();
         if (!mounted) return;
-        const userInfo = rawUserInfo ?? { watchedMovieIds: [], ratings: {}, reviews: {} };
-        setCatalogMovies(movies ?? []);
+        const userInfo = rawUserInfo ?? { watchedMovieIds: [], watchedMovies: [], ratings: {}, reviews: {} };
         setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
+        setWatchedMovies(userInfo.watchedMovies ?? []);
         setRatings(userInfo.ratings ?? {});
         setReviews(userInfo.reviews ?? {});
       } catch (err) {
@@ -84,37 +132,81 @@ export default function WatchHistoryScreen() {
     };
   }, []);
 
-  const watchedMovies = useMemo(() => {
-    const watchedSet = new Set(watchedMovieIds);
-    return catalogMovies.filter((movie) => watchedSet.has(movie.id));
-  }, [catalogMovies, watchedMovieIds]);
+  const [searchResults, setSearchResults] = useState<TmdbMovieSummary[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
-  const availableMovies = useMemo(() => {
-    const watchedSet = new Set(watchedMovieIds);
-    return catalogMovies.filter((movie) => !watchedSet.has(movie.id));
-  }, [catalogMovies, watchedMovieIds]);
+  const resetWatchHistory = async () => {
+  try {
+    await clearWatchHistory();
 
-  async function persistUserInfo(nextIds: number[], nextRatings: RatingsMap) {
+    setWatchedMovieIds([]);
+    setWatchedMovies([]);
+    setRatings({});
+    setReviews({});
+
+    setLoadError(null);
+  } catch (err) {
+    console.error("Failed to clear watch history", err);
+    setLoadError("Failed to reset watch history.");
+  }
+};
+
+  const openAddModal = () => {
+    setShowAddModal(true);
+    setSearchResults([]);
+    setAddMovieSearchQuery("");
+  };
+
+  async function persistUserInfo(nextIds: number[], nextRatings: RatingsMap, nextMovies: CatalogMovie[] = watchedMovies) {
     try {
-      await saveUserInfo({ watchedMovieIds: nextIds, ratings: nextRatings, reviews });
+      await saveUserInfo({ watchedMovieIds: nextIds, watchedMovies: nextMovies, ratings: nextRatings, reviews });
     } catch (err) {
       console.error("Failed to persist user info", err);
       setLoadError("Failed to save watch history.");
     }
   }
 
-  function searchMovies(movies: CatalogMovie[], query: string) {
-    if (!query.trim()) return movies;
-    const lowerQuery = query.toLowerCase();
-    return movies.filter((movie) => movie.title.toLowerCase().includes(lowerQuery) || (movie.genres ?? []).some((genre) => genre.toLowerCase().includes(lowerQuery)));
-  }
+  // function searchMovies(movies: CatalogMovie[], query: string) {
+  //   if (!query.trim()) return movies;
+  //   const lowerQuery = query.toLowerCase();
+  //   return movies.filter((movie) => movie.title.toLowerCase().includes(lowerQuery) || (movie.genres ?? []).some((genre) => genre.toLowerCase().includes(lowerQuery)));
+  // }
 
-  const addMovieFromCatalogue = async (movie: CatalogMovie) => {
-    const next = Array.from(new Set([...watchedMovieIds, movie.id]));
-    setWatchedMovieIds(next);
-    await persistUserInfo(next, ratings);
-    setShowAddModal(false);
-    setAddMovieSearchQuery("");
+  const addMovieFromTmdb = async (movie: TmdbMovieSummary) => {
+    if (isImporting) return;
+
+    setIsImporting(true);
+    setImportingMovieTitle(movie.title);
+    try {
+      const optimisticMovie: CatalogMovie = {
+        id: movie.id,
+        title: movie.title,
+        summary: movie.overview ?? null,
+        image_url: movie.poster_url ?? null,
+        vote_average: movie.vote_average ?? null,
+        release_date: movie.release_date ?? null,
+        adult: false,
+        genres: resolveTmdbGenres(movie.genre_ids),
+      };
+
+      const nextIds = Array.from(new Set([...watchedMovieIds, optimisticMovie.id]));
+      const nextMovies = [optimisticMovie, ...watchedMovies.filter((item) => item.id !== optimisticMovie.id)];
+
+      setWatchedMovieIds(nextIds);
+      setWatchedMovies(nextMovies);
+      await saveUserInfo({ watchedMovieIds: nextIds, watchedMovies: nextMovies, ratings, reviews });
+      void importTmdbMovieToCatalog(movie.id).catch((err) => {
+        console.error("Failed to import TMDb movie", err);
+      });
+      setShowAddModal(false);
+      setAddMovieSearchQuery("");
+    } catch (err) {
+      console.error("Failed to import TMDb movie", err);
+      setLoadError("Failed to import movie from TMDb.");
+    } finally {
+      setIsImporting(false);
+      setImportingMovieTitle(null);
+    }
   };
 
   const deleteMovie = async (movieId: number) => {
@@ -123,10 +215,21 @@ export default function WatchHistoryScreen() {
     delete nextRatings[movieId];
     const nextReviews = { ...reviews };
     delete nextReviews[movieId];
+    const nextMovies = watchedMovies.filter((movie) => movie.id !== movieId);
     setWatchedMovieIds(next);
+    setWatchedMovies(nextMovies);
     setRatings(nextRatings);
     setReviews(nextReviews);
-    await saveUserInfo({ watchedMovieIds: next, ratings: nextRatings, reviews: nextReviews });
+    await saveUserInfo({ watchedMovieIds: next, watchedMovies: nextMovies, ratings: nextRatings, reviews: nextReviews });
+  };
+
+  const handleDeleteFromInfo = async () => {
+    if (!selectedMovieForInfo) return;
+
+    await deleteMovie(selectedMovieForInfo.id);
+
+    setShowInfoOverlay(false);
+    setSelectedMovieForInfo(null);
   };
 
   const openRatingOverlay = (movie: CatalogMovie) => {
@@ -139,7 +242,7 @@ export default function WatchHistoryScreen() {
 
     const nextRatings = { ...ratings, [selectedMovieForRating.id]: score };
     setRatings(nextRatings);
-    await persistUserInfo(watchedMovieIds, nextRatings);
+    await persistUserInfo(watchedMovieIds, nextRatings, watchedMovies);
     setShowRatingOverlay(false);
     setSelectedMovieForRating(null);
   };
@@ -163,7 +266,7 @@ export default function WatchHistoryScreen() {
     }
 
     setReviews(nextReviews);
-    await saveUserInfo({ watchedMovieIds, ratings, reviews: nextReviews });
+    await saveUserInfo({ watchedMovieIds, watchedMovies, ratings, reviews: nextReviews });
     setShowReviewOverlay(false);
     setSelectedMovieForReview(null);
     setReviewDraft("");
@@ -184,6 +287,19 @@ export default function WatchHistoryScreen() {
     }
   };
 
+  const filteredWatchedMovies = useMemo(() => {
+  const q = watchHistorySearchQuery.trim().toLowerCase();
+
+  if (!q) return watchedMovies;
+
+    return watchedMovies.filter((movie) => {
+      return (
+        movie.title.toLowerCase().includes(q) ||
+        (movie.genres ?? []).some((g) => g.toLowerCase().includes(q))
+      );
+    });
+  }, [watchedMovies, watchHistorySearchQuery]);
+
   if (isLoading) {
     return (
       <ThemedView style={styles.container}>
@@ -193,12 +309,27 @@ export default function WatchHistoryScreen() {
     );
   }
 
+  
   return (
     <ThemedView style={styles.container}>
       <ThemedText type="title">Watch History</ThemedText>
       <ThemedText type="subtitle">Your watched movies.</ThemedText>
       {loadError ? <ThemedText style={{ color: "#FF3B30" }}>{loadError}</ThemedText> : null}
-
+      <TouchableOpacity
+        onPress={resetWatchHistory}
+        style={{
+          marginTop: 8,
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          backgroundColor: "rgba(255,0,0,0.15)",
+          alignSelf: "flex-start",
+        }}
+      >
+  <ThemedText style={{ color: "#FF3B30", fontWeight: "700" }}>
+    Reset watch history
+  </ThemedText>
+</TouchableOpacity>
       <TextInput
         placeholder="Search watch history..."
         value={watchHistorySearchQuery}
@@ -209,7 +340,7 @@ export default function WatchHistoryScreen() {
       <FlatList
         style={{ flex: 1, width: "100%" }}
         contentContainerStyle={styles.listContent}
-        data={searchMovies(watchedMovies, watchHistorySearchQuery)}
+        data={filteredWatchedMovies}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -264,47 +395,72 @@ export default function WatchHistoryScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)}>
+      <TouchableOpacity style={styles.fab} onPress={openAddModal}>
         <ThemedText style={globalStyles.fabText}>+</ThemedText>
       </TouchableOpacity>
 
-      {/* Add modal (simple list of available movies to add) */}
+      {/* Add modal (TMDb search + import) */}
       <Modal visible={showAddModal} animationType="slide">
         <ThemedView style={styles.modalRoot}>
-          <ThemedText type="title">Add Movie to History</ThemedText>
+          <ThemedText type="title">Search movie to add</ThemedText>
           <TextInput
-            placeholder="Search catalogue..."
+            placeholder="Search TMDb..."
             value={addMovieSearchQuery}
-            onChangeText={setAddMovieSearchQuery}
+            onChangeText={(text) => {
+              setAddMovieSearchQuery(text);
+            }}
             style={styles.searchBar}
+            editable={!isImporting}
           />
 
+          {isSearching ? (
+            <View style={{ paddingVertical: 16 }}>
+              <ActivityIndicator />
+            </View>
+          ) : null}
+
           <FlatList
-            data={searchMovies(availableMovies, addMovieSearchQuery)}
+            data={searchResults}
             keyExtractor={(m) => String(m.id)}
             renderItem={({ item }) => (
-              <TouchableOpacity style={styles.modalItem} onPress={() => addMovieFromCatalogue(item)}>
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={() => addMovieFromTmdb(item)}
+                disabled={isImporting}
+              >
                 <View style={globalStyles.posterPlaceholder}>
-                  {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.posterImage} /> : <ThemedText>Poster</ThemedText>}
+                  {item.poster_url ? <Image source={{ uri: item.poster_url }} style={styles.posterImage} /> : <ThemedText>Poster</ThemedText>}
                 </View>
                 <View style={styles.infoCol}>
                   <ThemedText type="subtitle">{item.title}</ThemedText>
-                  <ThemedText style={globalStyles.categories}>{(item.genres ?? []).join(", ")}</ThemedText>
+                  <ThemedText style={globalStyles.categories}>
+                    {item.release_date?.split("-")[0] || `TMDb #${item.id}`}
+                  </ThemedText>
                 </View>
               </TouchableOpacity>
             )}
             ListEmptyComponent={() => (
               <View style={styles.emptyContainer}>
-                <ThemedText>No movies found.</ThemedText>
+                <ThemedText>Search TMDb to add any movie.</ThemedText>
               </View>
             )}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           />
 
-          <TouchableOpacity style={globalStyles.infoCloseButton} onPress={() => setShowAddModal(false)}>
+          <TouchableOpacity style={globalStyles.infoCloseButton} onPress={() => setShowAddModal(false)} disabled={isImporting}>
             <ThemedText style={globalStyles.infoCloseButtonText}>Close</ThemedText>
           </TouchableOpacity>
+
+          {isImporting ? (
+            <View style={styles.importOverlay}>
+              <ActivityIndicator size="large" />
+              <ThemedText style={styles.importOverlayTitle}>Adding movie...</ThemedText>
+              <ThemedText style={styles.importOverlaySubtitle} numberOfLines={1}>
+                {importingMovieTitle ?? "Please wait"}
+              </ThemedText>
+            </View>
+          ) : null}
         </ThemedView>
       </Modal>
 
@@ -364,6 +520,23 @@ export default function WatchHistoryScreen() {
           </TouchableOpacity>
 
           <ThemedText type="title">{selectedMovieForInfo?.title}</ThemedText>
+            {selectedMovieForInfo && (
+              <TouchableOpacity
+                style={{
+                  marginTop: 12,
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  backgroundColor: "rgba(255, 59, 48, 0.15)",
+                  borderRadius: 8,
+                  alignSelf: "flex-start",
+                }}
+                onPress={handleDeleteFromInfo}
+              >
+                <ThemedText style={{ color: "#FF3B30", fontWeight: "700" }}>
+                  Remove from history
+                </ThemedText>
+              </TouchableOpacity>
+            )}
           <View style={globalStyles.infoPosterPlaceholder}>
             {selectedMovieForInfo?.image_url ? (
               <Image source={{ uri: selectedMovieForInfo.image_url }} style={styles.infoPoster} />
@@ -500,6 +673,21 @@ const styles = StyleSheet.create({
   emptyContainer: {
     padding: 24,
     alignItems: "center",
+  },
+  importOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: 24,
+  },
+  importOverlayTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  importOverlaySubtitle: {
+    opacity: 0.85,
+    textAlign: "center",
   },
   ratingRow: {
     flexDirection: "row",

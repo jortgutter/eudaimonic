@@ -1,14 +1,16 @@
 import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { useFocusEffect } from "@react-navigation/native";
 import { Image } from "expo-image";
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
-import { getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
-
+import { calculateMatchScore, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
+import { loadSelectedProviderIds, loadUserInfo } from "../../src/storage/userinfo";
 // type DbMovie = {
 //   id: number;
 //   title: string;
@@ -51,9 +53,46 @@ function scoreColor(score: number): string {
   return "#f44336";
 }
 
+const TraitBar = ({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) => {
+  const clamped = Math.max(0, Math.min(1, value ?? 0));
+
+  return (
+    <View style={{ marginBottom: 8 }}>
+      <Text style={{ marginBottom: 4 }}>
+        {label}: {clamped.toFixed(2)}
+      </Text>
+
+      <View
+        style={{
+          height: 8,
+          width: "100%",
+          backgroundColor: "#333",
+          borderRadius: 4,
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            height: "100%",
+            width: `${clamped * 100}%`,
+            backgroundColor: color,
+          }}
+        />
+      </View>
+    </View>
+  );
+};
 
 export default function HomeScreen() {
-
+  
   function openInfoOverlay(movie: ScoredMovie) {
     setSelectedMovie(movie);
     setOverlayVisible(true);
@@ -66,7 +105,10 @@ export default function HomeScreen() {
 
   const [selectedMovie, setSelectedMovie] = useState<ScoredMovie | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
-
+  const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
+  const [selectedProviderIds, setSelectedProviderIds] = useState<number[]>([]);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
   const [toggles, setToggles] = useState({
     Wisdom: { state: false, deactColor: "#457", actColor: "#9af" },
     Humanity: { state: false, deactColor: "#172", actColor: "#2e4" },
@@ -87,48 +129,120 @@ export default function HomeScreen() {
 
 
   const [scoredMovies, setDbMovies] = useState<ScoredMovie[]>([]);
+  const recommendationRequestIdRef = useRef(0);
 
-  const activeTraits: TraitOptions = Object.entries(toggles).reduce(
-    (acc, [key, value]) => {
+  useFocusEffect(
+    useCallback(() => {
+      let isCancelled = false;
+
+      const loadPreferenceState = async () => {
+        try {
+          setPreferencesLoaded(false);
+
+          const [userInfo, providerIds] = await Promise.all([
+            loadUserInfo(),
+            loadSelectedProviderIds(),
+          ]);
+          if (isCancelled) return;
+
+          setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
+          setSelectedProviderIds(providerIds);
+          setPreferencesLoaded(true);
+        } catch (err) {
+          console.error("Failed to load recommendation filters", err);
+          if (!isCancelled) {
+            setPreferencesLoaded(true);
+          }
+        }
+      };
+
+      loadPreferenceState();
+
+      return () => {
+        isCancelled = true;
+      };
+    }, [])
+  );
+
+
+  const activeTraits: TraitOptions = useMemo(() => {
+    return Object.entries(toggles).reduce((acc, [key, value]) => {
       if (value.state) {
         acc[key as keyof TraitOptions] = true;
       }
       return acc;
-    },
-    {} as TraitOptions
-  );
+    }, {} as TraitOptions);
+  }, [toggles]);
 
-useEffect(() => {
-  let cancelled = false;
 
-  (async () => {
-    try {
-      const movies = await getTopMoviesByTraits(activeTraits);
-      if (!cancelled) {
-        // Log how many movies were loaded to help debug rendering on devices
-        // eslint-disable-next-line no-console
-        console.log('Loaded top movies count:', movies.length, movies.slice(0,3).map(m=>m.title));
-        setDbMovies(movies);
+
+  
+// useEffect(() => {
+//   (async () => {
+//     const userInfo = await loadUserInfo();
+//     setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
+//     setWatchedLoaded(true);
+//   })();
+// }, []);
+
+// useEffect(() => {
+//   let cancelled = false;
+
+//   if (!watchedLoaded) return;
+
+//   const run = async () => {
+//     try {
+//       const movies = await getTopMoviesByTraits(
+//         activeTraits,
+//         watchedMovieIds
+//       );
+
+//       if (!cancelled) {
+//         setDbMovies(movies);
+//       }
+//     } catch (err) {
+//       console.error(err);
+//     }
+//   };
+
+//   run();
+
+//   return () => {
+//     cancelled = true;
+//   };
+// }, [watchedLoaded, watchedIdsKey, activeTraits]);
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+
+    const requestId = ++recommendationRequestIdRef.current;
+    setIsRecommendationsLoading(true);
+
+    const run = async () => {
+      try {
+        const movies = await getTopMoviesByTraits(
+          activeTraits,
+          watchedMovieIds,
+          selectedProviderIds,
+          "NL"
+        );
+        // Compute the match score for each movie based on the active traits
+        const mapped = movies.map((m) => ({
+          ...m,
+          match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
+        }));
+
+        setDbMovies(mapped);
+      } catch (err) {
+        console.error("Failed to load recommendations", err);
+      } finally {
+        if (recommendationRequestIdRef.current === requestId) {
+          setIsRecommendationsLoading(false);
+        }
       }
-    } catch (error) {
-      console.error("Failed to load movies from backend", error);
-      if (!cancelled) {
-        setDbMovies([]);
-      }
-    }
-  })();
+    };
 
-  return () => {
-    cancelled = true;
-  };
-}, [activeTraits]);
-
-
-
-  // const enrichedMovies = ScoredMovies.map((m) => ({
-  //   ...m,
-  //   recommendationScore: computeScore(m, activeTraits),
-  // }));
+    run();
+  }, [activeTraits, watchedMovieIds, selectedProviderIds, preferencesLoaded]);
 
 
   const sortedMovies = [...scoredMovies].sort(
@@ -194,12 +308,36 @@ useEffect(() => {
               </Text>
 
               <View style={styles.traitsContainer}>
-                <Text style={{ color: "white" }}> Humanity: {selectedMovie.Humanity}</Text>
-                <Text style={{ color: "white" }}>Courage: {selectedMovie.Courage}</Text>
-                <Text style={{ color: "white" }}>Justice: {selectedMovie.Justice}</Text>
-                <Text style={{ color: "white" }}>Transcendence: {selectedMovie.Transcendence}</Text>
-                <Text style={{ color: "white" }}>Restraint: {selectedMovie.Temperance}</Text>
-                <Text style={{ color: "white" }}>Wisdom: {selectedMovie.Wisdom}</Text>
+                <TraitBar
+                  label="Humanity"
+                  value={selectedMovie.Humanity}
+                  color={toggles.Humanity.actColor}
+                />
+                <TraitBar
+                  label="Courage"
+                  value={selectedMovie.Courage}
+                  color={toggles.Courage.actColor}
+                />
+                <TraitBar
+                  label="Justice"
+                  value={selectedMovie.Justice}
+                  color={toggles.Justice.actColor}
+                />
+                <TraitBar
+                  label="Temperance"
+                  value={selectedMovie.Temperance}
+                  color={toggles.Temperance.actColor}
+                />
+                <TraitBar
+                  label="Transcendence"
+                  value={selectedMovie.Transcendence}
+                  color={toggles.Transcendence.actColor}
+                />
+                <TraitBar
+                  label="Wisdom"
+                  value={selectedMovie.Wisdom}
+                  color={toggles.Wisdom.actColor}
+                />
               </View>
 
               <TouchableOpacity
@@ -247,9 +385,7 @@ useEffect(() => {
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.text}>
-                {displayNames[key] ?? key}
-              </Text>
+              <Text style={styles.text}>{key}</Text>
             </Pressable>
           );
         })}
@@ -266,9 +402,15 @@ useEffect(() => {
       <View style={styles.recommendationsSection}>
         <View style={styles.recommendationsHeader}>
           <View>
-            <ThemedText type="subtitle">Recommendations</ThemedText>
+            <View style={styles.recommendationsTitleRow}>
+              <ThemedText type="subtitle">Recommendations</ThemedText>
+              {isRecommendationsLoading ? <ActivityIndicator size="small" /> : null}
+            </View>
             <Text style={styles.recommendationsSubtext}>
               {sortedMovies.length} matching movies
+              {selectedProviderIds.length > 0
+                ? ` on ${selectedProviderIds.length} provider${selectedProviderIds.length > 1 ? "s" : ""}`
+                : ""}
             </Text>
           </View>
 
@@ -447,7 +589,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 3,
   },
-
   active: {
     // lifted look
     elevation: 8,
@@ -486,6 +627,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     opacity: 0.7,
     fontSize: 12,
+  },
+  recommendationsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   recommendationsPill: {
     backgroundColor: "rgba(255,255,255,0.1)",
