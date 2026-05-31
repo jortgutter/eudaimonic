@@ -6,11 +6,22 @@ import type { CatalogMovie } from "../db/database";
 export const USER_INFO_STORAGE_KEY = "eudaimonic.userinfo.v1";
 export const WATCH_PROVIDER_STORAGE_KEY = "eudaimonic.watchproviders.v1";
 
+export type UserVirtueProfile = {
+  wisdom: number;
+  courage: number;
+  humanity: number;
+  justice: number;
+  temperance: number;
+  transcendence: number;
+};
+
 export type UserInfo = {
   watchedMovieIds: number[];
   watchedMovies: CatalogMovie[];
-  ratings: Record<string, number>;
-  reviews: Record<string, string>;
+  ratings: Record<number, number>;
+  reviews: Record<number, string>;
+
+  userVirtueProfile?: UserVirtueProfile;
 };
 
 const DEFAULT_USER_INFO: UserInfo = {

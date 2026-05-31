@@ -29,13 +29,17 @@ class CatalogService:
                 backend_root / "movies.db",
                 backend_root / "data" / "movies.db",
                 backend_root / "app" / "database" / "movies.db",
+                backend_root / "app" / "movies.db",
             ]
         )
         return candidates
 
     @staticmethod
     def _db_path() -> Path:
+        print("CWD:", Path.cwd())
+        print("Candidates:")
         for candidate in CatalogService._candidate_paths():
+            print(" -", candidate, "exists =", candidate.exists())
             if candidate.exists():
                 return candidate
 
@@ -278,9 +282,23 @@ class CatalogService:
             }
 
         where_clauses: list[str] = []
-
+                # Build parameter mapping for named parameters
+                
+        params_map: dict[str, Any] = {
+            "wisdom": wisdom,
+            "courage": courage,
+            "humanity": humanity,
+            "justice": justice,
+            "temperance": temperance,
+            "transcendence": transcendence,
+            "rating_weight": rating_weight,
+            "limit": limit,
+        }
+        
         if exclude_set:
-            placeholders = ",".join([f":exclude_{i}" for i, _ in enumerate(sorted(exclude_set))])
+            placeholders = ",".join(f":exclude_{i}" for i in range(len(exclude_set)))
+            for i, eid in enumerate(sorted(exclude_set)):
+                params_map[f"exclude_{i}"] = eid
             where_clauses.append(f"m.id NOT IN ({placeholders})")
 
         if provider_set:
@@ -350,17 +368,7 @@ class CatalogService:
             LIMIT :limit
         """
 
-        # Build parameter mapping for named parameters
-        params_map: dict[str, Any] = {
-            "wisdom": wisdom,
-            "courage": courage,
-            "humanity": humanity,
-            "justice": justice,
-            "temperance": temperance,
-            "transcendence": transcendence,
-            "rating_weight": rating_weight,
-            "limit": limit,
-        }
+
 
         # Add where params into params_map; provider placeholders are named provider_0, provider_1, ...
         if provider_set:
@@ -392,6 +400,155 @@ class CatalogService:
             items.append(CatalogService._row_to_movie(row, genres=genres))
 
         return items
+
+    @staticmethod
+    def best_match_movie(
+        wisdom: float,
+        courage: float,
+        humanity: float,
+        justice: float,
+        temperance: float,
+        transcendence: float,
+        exclude_ids: str | None = None,
+        provider_ids: str | None = None,
+        country_code: str = "NL",
+    ) -> MovieCatalogItem:
+
+        logger = logging.getLogger(__name__)
+
+        # -------------------------
+        # Parse exclude IDs
+        # -------------------------
+        exclude_set: set[int] = set()
+        if exclude_ids:
+            exclude_set = {
+                int(x)
+                for x in exclude_ids.split(",")
+                if x.strip().isdigit()
+            }
+
+        # -------------------------
+        # Parse provider IDs
+        # -------------------------
+        provider_set: set[int] = set()
+        if provider_ids:
+            provider_set = {
+                int(x)
+                for x in provider_ids.split(",")
+                if x.strip().isdigit()
+            }
+
+        # -------------------------
+        # WHERE clause builder
+        # -------------------------
+        where_clauses: list[str] = []
+
+        if exclude_set:
+            placeholders = ",".join([f":exclude_{i}" for i in range(len(exclude_set))])
+            where_clauses.append(f"m.id NOT IN ({placeholders})")
+
+        if provider_set:
+            provider_placeholders = ",".join([f":provider_{i}" for i in range(len(provider_set))])
+            where_clauses.append(f"""
+                EXISTS (
+                    SELECT 1
+                    FROM watch_providers wp
+                    WHERE wp.movie_id = m.id
+                    AND UPPER(wp.country_code) = UPPER(:country_code)
+                    AND wp.provider_id IN ({provider_placeholders})
+                )
+            """)
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        # -------------------------
+        # SQL query (dot-product similarity)
+        # -------------------------
+        sql = f"""
+            SELECT
+                m.id,
+                m.title,
+                m.summary,
+                m.image_url,
+                m.vote_average,
+                m.release_date,
+                m.adult,
+
+                vs.Wisdom,
+                vs.Courage,
+                vs.Humanity,
+                vs.Justice,
+                vs.Temperance,
+                vs.Transcendence,
+
+                COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres,
+
+                (
+                    (vs.Wisdom * :wisdom) +
+                    (vs.Courage * :courage) +
+                    (vs.Humanity * :humanity) +
+                    (vs.Justice * :justice) +
+                    (vs.Temperance * :temperance) +
+                    (vs.Transcendence * :transcendence)
+                ) AS score
+
+            FROM movie_virtue_scores_wide vs
+            JOIN movies m ON m.id = vs.movie_id
+            LEFT JOIN movie_genres mg ON mg.movie_id = m.id
+            LEFT JOIN genres g ON g.id = mg.genre_id
+
+            {where_sql}
+
+            GROUP BY m.id
+            ORDER BY score DESC
+            LIMIT 1
+        """
+
+        # -------------------------
+        # Parameters
+        # -------------------------
+        params: dict[str, Any] = {
+            "wisdom": wisdom,
+            "courage": courage,
+            "humanity": humanity,
+            "justice": justice,
+            "temperance": temperance,
+            "transcendence": transcendence,
+        }
+
+        if provider_set:
+            for i, pid in enumerate(sorted(provider_set)):
+                params[f"provider_{i}"] = pid
+            params["country_code"] = country_code
+
+        if exclude_set:
+            for i, eid in enumerate(sorted(exclude_set)):
+                params[f"exclude_{i}"] = eid
+
+        # -------------------------
+        # Execute
+        # -------------------------
+        with CatalogService._connect() as connection:
+            logger.info(
+                "best_match: executing query (exclude=%d providers=%d)",
+                len(exclude_set),
+                len(provider_set),
+            )
+
+            row = connection.execute(sql, params).fetchone()
+
+        # -------------------------
+        # Handle empty result
+        # -------------------------
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No matching movie found",
+            )
+
+        genres = [g for g in str(row["genres"] or "").split(",") if g]
+
+        return CatalogService._row_to_movie(row, genres=genres)
 
     @staticmethod
     def list_watch_providers(

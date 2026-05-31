@@ -1,7 +1,8 @@
 
 
 // Change this before deploying!
-const DEFAULT_HOST = 'http://localhost:8000';
+//const DEFAULT_HOST = 'http://localhost:8000';
+const DEFAULT_HOST = 'http://192.168.80.184:8000';
 
 const API_BASE_URL = DEFAULT_HOST;
 
@@ -155,6 +156,27 @@ async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = 15000):
 
 export async function getCatalogMovies(limit = 100): Promise<CatalogMovie[]> {
   return fetchJson<CatalogMovie[]>(`${API_V1_BASE}/movies?skip=0&limit=${limit}`);
+}
+
+export async function getBestMatchMovie(
+  traits: TraitOptions,
+  excludeIds: number[],
+  providerIds: number[] = [],
+  countryCode = "NL"
+) {
+  const params = new URLSearchParams({
+    wisdom: traits.Wisdom ? "1" : "0",
+    courage: traits.Courage ? "1" : "0",
+    humanity: traits.Humanity ? "1" : "0",
+    justice: traits.Justice ? "1" : "0",
+    temperance: traits.Temperance ? "1" : "0",
+    transcendence: traits.Transcendence ? "1" : "0",
+    exclude_ids: excludeIds.join(","),
+  });
+
+  return fetchJson<CatalogMovie>(
+    `${API_V1_BASE}/movies/best-match?${params.toString()}`
+  );
 }
 
 export async function searchMovies(

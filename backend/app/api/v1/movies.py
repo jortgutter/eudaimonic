@@ -1,6 +1,6 @@
 """Local movie catalog endpoints"""
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
-
+import traceback
 from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, WatchProviderItem
 from backend.app.services.catalog_import_service import CatalogImportService
 from backend.app.services.catalog_service import CatalogService
@@ -44,6 +44,34 @@ def list_movies(
     return CatalogService.list_movies(skip=skip, limit=limit)
 
 @router.get(
+    "/best-match",
+    response_model=MovieCatalogItem,
+    summary="Best matching movie for user profile",
+)
+def best_match_movie(
+    wisdom: float = Query(..., ge=0, le=1),
+    courage: float = Query(..., ge=0, le=1),
+    humanity: float = Query(..., ge=0, le=1),
+    justice: float = Query(..., ge=0, le=1),
+    temperance: float = Query(..., ge=0, le=1),
+    transcendence: float = Query(..., ge=0, le=1),
+    exclude_ids: str | None = Query(None),
+    provider_ids: str | None = Query(None),
+    country_code: str = Query("NL", min_length=2, max_length=2),
+):
+    return CatalogService.best_match_movie(
+        wisdom=wisdom,
+        courage=courage,
+        humanity=humanity,
+        justice=justice,
+        temperance=temperance,
+        transcendence=transcendence,
+        exclude_ids=exclude_ids,
+        provider_ids=provider_ids,
+        country_code=country_code,
+    )
+
+@router.get(
     "/recommend",
     response_model=list[MovieCatalogItem],
     summary="Recommend Movies",
@@ -62,20 +90,27 @@ def recommend_movies(
     country_code: str = Query("NL", min_length=2, max_length=2),
 ) -> list[MovieCatalogItem]:
     """Recommend movies based on virtue trait similarity."""
+    try:
 
-    return CatalogService.recommend_movies(
-        wisdom=wisdom,
-        courage=courage,
-        humanity=humanity,
-        justice=justice,
-        temperance=temperance,
-        transcendence=transcendence,
-        rating_weight=rating_weight,
-        limit=limit,
-        exclude_ids=exclude_ids,
-        provider_ids=provider_ids,
-        country_code=country_code,
-    )
+
+        return CatalogService.recommend_movies(
+            wisdom=wisdom,
+            courage=courage,
+            humanity=humanity,
+            justice=justice,
+            temperance=temperance,
+            transcendence=transcendence,
+            rating_weight=rating_weight,
+            limit=limit,
+            exclude_ids=exclude_ids,
+            provider_ids=provider_ids,
+            country_code=country_code,
+        )
+    except Exception as e:
+        print("\n\n=== RECOMMENDER ERROR ===")
+        traceback.print_exc()
+        print("=========================\n\n")
+        raise
 
 
 @router.get(
