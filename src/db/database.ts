@@ -2,7 +2,7 @@
 
 // Change this before deploying!
 //const DEFAULT_HOST = 'http://localhost:8000';
-const DEFAULT_HOST = 'http://192.168.80.184:8000';
+const DEFAULT_HOST = 'http://localhost:8000';
 
 const API_BASE_URL = DEFAULT_HOST;
 

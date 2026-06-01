@@ -563,6 +563,19 @@ class CatalogImportService:
         )
         logger.info("Saved movie %s to local catalog", movie_id)
 
+    from pathlib import Path
+    import pandas as pd
+
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def _virtue_bundle():
+        import pickle
+
+        path = Path(__file__).resolve().parents[1] / "database" / "virtue_model.pkl"
+
+        with open(path, "rb") as f:
+            return pickle.load(f)
+        
     @staticmethod
     @lru_cache(maxsize=1)
     def _model():
@@ -589,33 +602,78 @@ class CatalogImportService:
 
     @staticmethod
     def score_movie_summary(summary: str) -> dict[str, Any]:
-        if not summary or not summary.strip():
-            return {
-                virtue: {
-                    "score": 0.0,
-                    "substrengths": {substrength: 0.0 for substrength in substrengths},
-                }
-                for virtue, substrengths in prototypes.items()
-            }
-
-        model = CatalogImportService._model()
-        movie_vector = model.encode([summary], convert_to_numpy=True, normalize_embeddings=True)[0]
-
+        import numpy as np
+        from scipy.special import softmax
+        from scipy.stats import percentileofscore
         from sklearn.metrics.pairwise import cosine_similarity
 
-        results: dict[str, Any] = {}
-        for virtue, substrengths in CatalogImportService._prototype_embeddings().items():
-            substrength_scores: dict[str, float] = {}
-            for substrength, proto_vectors in substrengths.items():
-                similarities = cosine_similarity([movie_vector], proto_vectors)[0]
-                substrength_scores[substrength] = float(sum(similarities) / len(similarities)) if len(similarities) else 0.0
+        bundle = CatalogImportService._virtue_bundle()
+        model = CatalogImportService._model()
 
-            results[virtue] = {
-                "score": float(sum(substrength_scores.values()) / len(substrength_scores)) if substrength_scores else 0.0,
-                "substrengths": substrength_scores,
+        prototype_embeddings = bundle["prototype_embeddings"]
+        reference_df = bundle["reference_df"]
+
+        virtues = list(prototype_embeddings.keys())
+
+        movie_vector = model.encode(
+            summary,
+            convert_to_numpy=True,
+            normalize_embeddings=True
+        )
+
+        # RAW SCORES
+        raw_scores = {}
+
+        for virtue, substrengths in prototype_embeddings.items():
+
+            substrength_scores = []
+
+            for proto_vectors in substrengths.values():
+
+                sims = cosine_similarity([movie_vector], proto_vectors)[0]
+                substrength_scores.append(float(np.mean(sims)))
+
+            raw_scores[virtue] = float(np.mean(substrength_scores))
+
+        # WITHIN MOVIE
+        raw_vector = np.array([raw_scores[v] for v in virtues])
+
+        within_scores = {
+            v: float(val)
+            for v, val in zip(virtues, softmax(raw_vector))
+        }
+
+        # BETWEEN MOVIE
+        between_scores = {}
+
+        for v in virtues:
+            col = f"{v}_raw"
+
+            between_scores[v] = percentileofscore(
+                reference_df[col],
+                raw_scores[v],
+                kind="rank"
+            ) / 100.0  # Normalize from 0-100 to 0-1
+
+        # HYBRID
+        alpha = 0.7
+
+        hybrid_scores = {
+            v: (
+                alpha * between_scores[v]
+                + (1 - alpha) * within_scores[v]
+            )
+            for v in virtues
+        }
+
+        # FORMAT FOR DB
+        return {
+            v: {
+                "score": hybrid_scores[v],
+                "substrengths": {}
             }
-
-        return results
+            for v in virtues
+        }
 
     @staticmethod
     def save_virtue_scores(connection: sqlite3.Connection, movie_id: int, scores: dict[str, Any]) -> None:

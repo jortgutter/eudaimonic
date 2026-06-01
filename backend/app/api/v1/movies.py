@@ -1,7 +1,7 @@
 """Local movie catalog endpoints"""
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 import traceback
-from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, WatchProviderItem
+from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, VirtueScoreSet, WatchProviderItem
 from backend.app.services.catalog_import_service import CatalogImportService
 from backend.app.services.catalog_service import CatalogService
 
@@ -106,7 +106,7 @@ def recommend_movies(
             provider_ids=provider_ids,
             country_code=country_code,
         )
-    except Exception as e:
+    except Exception:
         print("\n\n=== RECOMMENDER ERROR ===")
         traceback.print_exc()
         print("=========================\n\n")
@@ -156,9 +156,31 @@ def get_movie(movie_id: int) -> MovieCatalogItem:
 def get_movie_virtue_scores(movie_id: int) -> MovieVirtueScoresResponse:
     """Get virtue scores for a movie from the local catalog index."""
     scores = CatalogService.get_movie_virtue_scores(movie_id)
-    if not scores:
-        raise HTTPException(status_code=404, detail="Movie not found")
-    return scores
+    if scores:
+        return scores
+    
+    # Movie not in local catalog yet - return placeholder with empty scores
+    # The frontend will trigger the import in the background
+    placeholder_movie = MovieCatalogItem(
+        id=movie_id,
+        title=f"Movie {movie_id}",
+        summary=None,
+        image_url=None,
+        vote_average=None,
+        release_date=None,
+        adult=False,
+        genres=[],
+        Wisdom=0.0,
+        Courage=0.0,
+        Humanity=0.0,
+        Justice=0.0,
+        Temperance=0.0,
+        Transcendence=0.0,
+    )
+    return MovieVirtueScoresResponse(
+        movie=placeholder_movie,
+        virtue_scores=VirtueScoreSet()
+    )
 
 
 @router.post("", summary="Create Movie")

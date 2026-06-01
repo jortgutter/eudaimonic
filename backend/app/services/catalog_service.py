@@ -283,6 +283,9 @@ class CatalogService:
 
         where_clauses: list[str] = []
                 # Build parameter mapping for named parameters
+        
+        # Filter out movies below 7 rating
+        where_clauses.append("m.vote_average >= 7")
                 
         params_map: dict[str, Any] = {
             "wisdom": wisdom,
@@ -442,6 +445,9 @@ class CatalogService:
         # WHERE clause builder
         # -------------------------
         where_clauses: list[str] = []
+        
+        # Filter out movies below 7 rating
+        where_clauses.append("m.vote_average >= 7")
 
         if exclude_set:
             placeholders = ",".join([f":exclude_{i}" for i in range(len(exclude_set))])

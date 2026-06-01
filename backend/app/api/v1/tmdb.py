@@ -19,29 +19,8 @@ router = APIRouter(prefix="/tmdb", tags=["tmdb"])
 #     return await TmdbService.search_movies(query=q, page=page)
 
 @router.get("/search", response_model=TmdbSearchResponse)
-def search_tmdb(q: str, page: int = 1) -> TmdbSearchResponse:
-    movies = CatalogService.search_movies(query=q)
-
-    results = [
-        TmdbMovieSummary(
-            id=m.id,
-            title=m.title,
-            overview=m.summary,
-            poster_url=m.image_url,
-            release_date=str(m.release_date) if m.release_date else None,
-            vote_average=m.vote_average or 0.0,
-            popularity=0.0,
-            genre_ids=[],
-        )
-        for m in movies
-    ]
-
-    return TmdbSearchResponse(
-        page=1,
-        total_pages=1,
-        total_results=len(results),
-        results=results,
-    )
+async def search_tmdb(q: str, page: int = 1) -> TmdbSearchResponse:
+    return await TmdbService.search_movies(query=q, page=page)
 
 
 @router.post(
