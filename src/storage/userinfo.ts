@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
-import type { CatalogMovie } from "../db/database";
+import type { CatalogMovie, ScoredMovie } from "../db/database";
 
 export const USER_INFO_STORAGE_KEY = "eudaimonic.userinfo.v1";
 export const WATCH_PROVIDER_STORAGE_KEY = "eudaimonic.watchproviders.v1";
@@ -30,6 +30,52 @@ const DEFAULT_USER_INFO: UserInfo = {
   ratings: {},
   reviews: {},
 };
+
+export function buildUserVirtueProfileFromMovies(
+  movies: ScoredMovie[]
+): UserVirtueProfile {
+  if (!movies.length) {
+    return {
+      wisdom: 1,
+      courage: 1,
+      humanity: 1,
+      justice: 1,
+      temperance: 1,
+      transcendence: 1,
+    };
+  }
+
+
+
+  const sum = {
+    wisdom: 0,
+    courage: 0,
+    humanity: 0,
+    justice: 0,
+    temperance: 0,
+    transcendence: 0,
+  };
+
+  for (const m of movies) {
+    sum.wisdom += m.Wisdom;
+    sum.courage += m.Courage;
+    sum.humanity += m.Humanity;
+    sum.justice += m.Justice;
+    sum.temperance += m.Temperance;
+    sum.transcendence += m.Transcendence;
+  }
+
+  const n = movies.length;
+
+  return {
+    wisdom: sum.wisdom / n,
+    courage: sum.courage / n,
+    humanity: sum.humanity / n,
+    justice: sum.justice / n,
+    temperance: sum.temperance / n,
+    transcendence: sum.transcendence / n,
+  };
+}
 
 export async function loadUserInfo(): Promise<UserInfo> {
   try {

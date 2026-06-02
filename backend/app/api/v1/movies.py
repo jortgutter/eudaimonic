@@ -4,7 +4,11 @@ import traceback
 from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, WatchProviderItem
 from backend.app.services.catalog_import_service import CatalogImportService
 from backend.app.services.catalog_service import CatalogService
+from pydantic import BaseModel
 
+class BestMatchResponse(BaseModel):
+    best_similar: MovieCatalogItem | None
+    best_explore: MovieCatalogItem | None
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -45,31 +49,53 @@ def list_movies(
 
 @router.get(
     "/best-match",
-    response_model=MovieCatalogItem,
-    summary="Best matching movie for user profile",
+    response_model=BestMatchResponse,
+    summary="Best matching and best exploration movies for user profile",
 )
-def best_match_movie(
+def best_match_movies(
     wisdom: float = Query(..., ge=0, le=1),
     courage: float = Query(..., ge=0, le=1),
     humanity: float = Query(..., ge=0, le=1),
     justice: float = Query(..., ge=0, le=1),
     temperance: float = Query(..., ge=0, le=1),
     transcendence: float = Query(..., ge=0, le=1),
+    wisdom_up: float = Query(...),
+    courage_up: float = Query(...),
+    humanity_up: float = Query(...),
+    justice_up: float = Query(...),
+    temperance_up: float = Query(...),
+    transcendence_up: float = Query(...),
+
     exclude_ids: str | None = Query(None),
     provider_ids: str | None = Query(None),
     country_code: str = Query("NL", min_length=2, max_length=2),
 ):
-    return CatalogService.best_match_movie(
+
+    best_similar, best_explore =  CatalogService.best_match_movies(
         wisdom=wisdom,
         courage=courage,
         humanity=humanity,
         justice=justice,
         temperance=temperance,
         transcendence=transcendence,
+
+        wisdom_up=wisdom_up,
+        courage_up=courage_up,
+        humanity_up=humanity_up,
+        justice_up=justice_up,
+        temperance_up=temperance_up,
+        transcendence_up=transcendence_up,
+
         exclude_ids=exclude_ids,
         provider_ids=provider_ids,
         country_code=country_code,
     )
+    
+    return {
+        "best_similar": best_similar,
+        "best_explore": best_explore,
+    }
+    
 
 @router.get(
     "/recommend",

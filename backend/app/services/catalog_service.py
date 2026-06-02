@@ -401,18 +401,25 @@ class CatalogService:
 
         return items
 
+    
     @staticmethod
-    def best_match_movie(
+    def best_match_movies(
         wisdom: float,
         courage: float,
         humanity: float,
         justice: float,
         temperance: float,
         transcendence: float,
+        wisdom_up: float,
+        courage_up: float,
+        humanity_up: float,
+        justice_up: float,
+        temperance_up: float,
+        transcendence_up: float,
         exclude_ids: str | None = None,
         provider_ids: str | None = None,
         country_code: str = "NL",
-    ) -> MovieCatalogItem:
+    ) -> tuple[MovieCatalogItem, MovieCatalogItem]:
 
         logger = logging.getLogger(__name__)
 
@@ -462,7 +469,7 @@ class CatalogService:
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
         # -------------------------
-        # SQL query (dot-product similarity)
+        # Shared SQL with mode-based scoring
         # -------------------------
         sql = f"""
             SELECT
@@ -484,16 +491,36 @@ class CatalogService:
                 COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres,
 
                 (
-                    (vs.Wisdom * :wisdom) +
-                    (vs.Courage * :courage) +
-                    (vs.Humanity * :humanity) +
-                    (vs.Justice * :justice) +
-                    (vs.Temperance * :temperance) +
-                    (vs.Transcendence * :transcendence)
-                ) AS score
+                    CASE
+                        WHEN :mode = 'similar' THEN
+                            (
+                                POWER(:uw, 1.5) * vs.Wisdom +
+                                POWER(:uc, 1.5) * vs.Courage +
+                                POWER(:uh, 1.5) * vs.Humanity +
+                                POWER(:uj, 1.5) * vs.Justice +
+                                POWER(:ut, 1.5) * vs.Temperance +
+                                POWER(:uz, 1.5) * vs.Transcendence
+                            )
+                        WHEN :mode = 'explore' THEN
+                            (
+                                (1 - :uw) * vs.Wisdom +
+                                (1 - :uc) * vs.Courage +
+                                (1 - :uh) * vs.Humanity +
+                                (1 - :uj) * vs.Justice +
+                                (1 - :ut) * vs.Temperance +
+                                (1 - :uz) * vs.Transcendence
+                            )
+                    END
+                )
+                + (:pop_weight * (m.vote_average / 10.0)) AS score
 
             FROM movie_virtue_scores_wide vs
             JOIN movies m ON m.id = vs.movie_id
+            JOIN (
+                SELECT movie_id, COUNT(*) as review_count
+                FROM reviews
+                GROUP BY movie_id
+            ) rc ON rc.movie_id = m.id
             LEFT JOIN movie_genres mg ON mg.movie_id = m.id
             LEFT JOIN genres g ON g.id = mg.genre_id
 
@@ -505,50 +532,56 @@ class CatalogService:
         """
 
         # -------------------------
-        # Parameters
+        # Base parameters
         # -------------------------
-        params: dict[str, Any] = {
-            "wisdom": wisdom,
-            "courage": courage,
-            "humanity": humanity,
-            "justice": justice,
-            "temperance": temperance,
-            "transcendence": transcendence,
+        base_params: dict[str, Any] = {
+            "uw": wisdom_up,
+            "uc": courage_up,
+            "uh": humanity_up,
+            "uj": justice_up,
+            "ut": temperance_up,
+            "uz": transcendence_up,
+            "pop_weight": 0.15,
         }
+
+        min_reviews = 1 if provider_set else 10
+        base_params["min_reviews"] = min_reviews
 
         if provider_set:
             for i, pid in enumerate(sorted(provider_set)):
-                params[f"provider_{i}"] = pid
-            params["country_code"] = country_code
+                base_params[f"provider_{i}"] = pid
+            base_params["country_code"] = country_code
 
         if exclude_set:
             for i, eid in enumerate(sorted(exclude_set)):
-                params[f"exclude_{i}"] = eid
+                base_params[f"exclude_{i}"] = eid
 
         # -------------------------
-        # Execute
+        # Helper execution function
         # -------------------------
-        with CatalogService._connect() as connection:
-            logger.info(
-                "best_match: executing query (exclude=%d providers=%d)",
-                len(exclude_set),
-                len(provider_set),
-            )
+        def execute(mode: str) -> MovieCatalogItem:
+            params = dict(base_params)
+            params["mode"] = mode
 
-            row = connection.execute(sql, params).fetchone()
+            with CatalogService._connect() as connection:
+                row = connection.execute(sql, params).fetchone()
+
+            if not row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No matching movie found for mode={mode}",
+                )
+
+            genres = [g for g in str(row["genres"] or "").split(",") if g]
+            return CatalogService._row_to_movie(row, genres=genres)
 
         # -------------------------
-        # Handle empty result
+        # Execute both modes
         # -------------------------
-        if not row:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No matching movie found",
-            )
+        best_similar = execute("similar")
+        best_explore = execute("explore")
 
-        genres = [g for g in str(row["genres"] or "").split(",") if g]
-
-        return CatalogService._row_to_movie(row, genres=genres)
+        return best_similar, best_explore
 
     @staticmethod
     def list_watch_providers(
