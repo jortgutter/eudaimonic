@@ -9,7 +9,11 @@ import {
   Modal,
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
+<<<<<<< HEAD
 import { calculateMatchScore, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
+=======
+import { calculateMatchScore, getBestMatchMovie, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
+>>>>>>> origin/Movie-virtue-auto-importer
 import { loadSelectedProviderIds, loadUserInfo } from "../../src/storage/userinfo";
 // type DbMovie = {
 //   id: number;
@@ -102,7 +106,7 @@ export default function HomeScreen() {
     setOverlayVisible(false);
     setSelectedMovie(null);
   }
-
+  const [bestMatchMovie, setBestMatchMovie] = useState<ScoredMovie | null>(null);
   const [selectedMovie, setSelectedMovie] = useState<ScoredMovie | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
@@ -219,19 +223,28 @@ export default function HomeScreen() {
 
     const run = async () => {
       try {
-        const movies = await getTopMoviesByTraits(
-          activeTraits,
-          watchedMovieIds,
-          selectedProviderIds,
-          "NL"
-        );
-        // Compute the match score for each movie based on the active traits
+        const [movies, bestMatch] = await Promise.all([
+          getTopMoviesByTraits(
+            activeTraits,
+            watchedMovieIds,
+            selectedProviderIds,
+            "NL"
+          ),
+          getBestMatchMovie( // <- you implement this API call
+            activeTraits,
+            watchedMovieIds,
+            selectedProviderIds,
+            "NL"
+          ),
+        ]);
+
         const mapped = movies.map((m) => ({
           ...m,
           match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
         }));
 
         setDbMovies(mapped);
+        setBestMatchMovie(bestMatch ?? null);
       } catch (err) {
         console.error("Failed to load recommendations", err);
       } finally {
@@ -243,7 +256,6 @@ export default function HomeScreen() {
 
     run();
   }, [activeTraits, watchedMovieIds, selectedProviderIds, preferencesLoaded]);
-
 
   const sortedMovies = [...scoredMovies].sort(
     (a,b) => b.match_score - a.match_score
@@ -430,6 +442,45 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={styles.recommendationList}>
+
+            {bestMatchMovie && (
+              <TouchableOpacity
+                style={[
+                  styles.recommendationCard,
+                  { borderColor: "#ffd700", borderWidth: 2 }
+                ]}
+                activeOpacity={0.85}
+                onPress={() => openInfoOverlay(bestMatchMovie)}
+              >
+                <View style={styles.cardPosterWrap}>
+                  <Image source={{ uri: bestMatchMovie.image_url }} style={styles.cardPoster} />
+                  <View style={styles.cardRankBadge}>
+                    <Text style={styles.cardRankText}>BEST MATCH</Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardBody}>
+                  <ThemedText type="subtitle" numberOfLines={2}>
+                    {bestMatchMovie.title}
+                  </ThemedText>
+
+                  <Text style={styles.cardMeta}>
+                    IMDb {bestMatchMovie.vote_average}/10
+                    {bestMatchMovie.release_date ? ` • ${bestMatchMovie.release_date}` : ""}
+                  </Text>
+
+                  <View style={styles.scoreBarTrack}>
+                    <View
+                      style={[
+                        styles.scoreBarFill,
+                        { width: "100%", backgroundColor: "#ffd700" }
+                      ]}
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            )}
+
             {sortedMovies.map((item, index) => (
               <TouchableOpacity
                 key={item.id}

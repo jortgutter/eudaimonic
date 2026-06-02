@@ -56,6 +56,7 @@ class Settings(BaseSettings):
         "http://localhost:8080",
         "http://127.0.0.1:3000",
         "http://145.116.129.10:8081",
+        "http://192.168.80.184:8081"
     ]
     ALLOWED_ORIGIN_REGEX: str = r"https?://.*" if os.getenv("DEBUG", "False").lower() == "true" else r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
     

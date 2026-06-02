@@ -26,10 +26,13 @@ import {
 import {
   clearWatchHistory,
   loadUserInfo,
-  saveUserInfo
+  saveUserInfo,
+  UserVirtueProfile
 } from "../../src/storage/userinfo";
 type RatingsMap = Record<number, number>;
 type ReviewsMap = Record<number, string>;
+
+
 
 const EMPTY_VIRTUE_SCORES: VirtueScores = {
   wisdom: 0,
@@ -41,6 +44,63 @@ const EMPTY_VIRTUE_SCORES: VirtueScores = {
 };
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
+
+async function buildMovieVirtueMap(
+  movies: CatalogMovie[]
+): Promise<Record<number, VirtueScores>> {
+  const entries = await Promise.all(
+    movies.map(async (m) => {
+      const v = await getMovieVirtueScores(m.id);
+      return [m.id, v ?? EMPTY_VIRTUE_SCORES] as const;
+    })
+  );
+
+  return Object.fromEntries(entries);
+}
+
+function computeUserVirtueProfile(
+  movies: CatalogMovie[],
+  ratings: RatingsMap,
+  movieVirtueMap: Record<number, VirtueScores>
+): UserVirtueProfile {
+  const profile: UserVirtueProfile = {
+    wisdom: 0,
+    courage: 0,
+    humanity: 0,
+    justice: 0,
+    temperance: 0,
+    transcendence: 0,
+  };
+
+  let totalWeight = 0;
+
+  for (const movie of movies) {
+    const virtues = movieVirtueMap[movie.id];
+    if (!virtues) continue;
+
+    const rating = ratings[movie.id] ?? 5.5;
+    const weight = rating - 5.5; // center around neutral
+
+    if (weight === 0) continue;
+
+    totalWeight += Math.abs(weight);
+
+    profile.wisdom += virtues.wisdom * weight;
+    profile.courage += virtues.courage * weight;
+    profile.humanity += virtues.humanity * weight;
+    profile.justice += virtues.justice * weight;
+    profile.temperance += virtues.temperance * weight;
+    profile.transcendence += virtues.transcendence * weight;
+  }
+
+  if (totalWeight > 0) {
+    for (const k of Object.keys(profile) as (keyof UserVirtueProfile)[]) {
+      profile[k] /= totalWeight;
+    }
+  }
+
+  return profile;
+}
 
 export default function WatchHistoryScreen() {
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
@@ -67,6 +127,30 @@ export default function WatchHistoryScreen() {
   const [importingMovieTitle, setImportingMovieTitle] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+
+  const recomputeAndPersistProfile = async (
+    movies: CatalogMovie[],
+    ratings: RatingsMap,
+    watchedIds: number[]
+
+  ) => {
+    const movieVirtueMap = await buildMovieVirtueMap(movies);
+
+    const profile = computeUserVirtueProfile(movies, ratings, movieVirtueMap);
+
+    const userInfo = await loadUserInfo();
+
+    await saveUserInfo({
+      ...(userInfo ?? {}),
+      watchedMovieIds: watchedIds,
+      watchedMovies: movies,
+      ratings,
+      reviews,
+      userVirtueProfile: profile,
+    });
+
+    return profile;
+  };
 
   useEffect(() => {
     const timeout = setTimeout(async () => {
@@ -157,14 +241,26 @@ export default function WatchHistoryScreen() {
     setAddMovieSearchQuery("");
   };
 
-  async function persistUserInfo(nextIds: number[], nextRatings: RatingsMap, nextMovies: CatalogMovie[] = watchedMovies) {
-    try {
-      await saveUserInfo({ watchedMovieIds: nextIds, watchedMovies: nextMovies, ratings: nextRatings, reviews });
-    } catch (err) {
-      console.error("Failed to persist user info", err);
-      setLoadError("Failed to save watch history.");
-    }
+async function persistUserInfo(
+  nextIds: number[],
+  nextRatings: RatingsMap,
+  nextMovies: CatalogMovie[] = watchedMovies,
+  nextReviews: ReviewsMap = reviews,
+  profile?: UserVirtueProfile
+) {
+  try {
+    await saveUserInfo({
+      watchedMovieIds: nextIds,
+      watchedMovies: nextMovies,
+      ratings: nextRatings,
+      reviews: nextReviews,
+      userVirtueProfile: profile,
+    });
+  } catch (err) {
+    console.error("Failed to persist user info", err);
+    setLoadError("Failed to save watch history.");
   }
+}
 
   // function searchMovies(movies: CatalogMovie[], query: string) {
   //   if (!query.trim()) return movies;
@@ -194,7 +290,10 @@ export default function WatchHistoryScreen() {
 
       setWatchedMovieIds(nextIds);
       setWatchedMovies(nextMovies);
-      await saveUserInfo({ watchedMovieIds: nextIds, watchedMovies: nextMovies, ratings, reviews });
+      //await saveUserInfo({ watchedMovieIds: nextIds, watchedMovies: nextMovies, ratings, reviews });
+
+      await recomputeAndPersistProfile(nextMovies, ratings, nextIds);
+      
       void importTmdbMovieToCatalog(movie.id).catch((err) => {
         console.error("Failed to import TMDb movie", err);
       });
@@ -220,7 +319,11 @@ export default function WatchHistoryScreen() {
     setWatchedMovies(nextMovies);
     setRatings(nextRatings);
     setReviews(nextReviews);
-    await saveUserInfo({ watchedMovieIds: next, watchedMovies: nextMovies, ratings: nextRatings, reviews: nextReviews });
+    //await saveUserInfo({ watchedMovieIds: next, watchedMovies: nextMovies, ratings: nextRatings, reviews: nextReviews });
+
+    await recomputeAndPersistProfile(nextMovies, nextRatings, next);
+    
+
   };
 
   const handleDeleteFromInfo = async () => {
@@ -242,7 +345,10 @@ export default function WatchHistoryScreen() {
 
     const nextRatings = { ...ratings, [selectedMovieForRating.id]: score };
     setRatings(nextRatings);
-    await persistUserInfo(watchedMovieIds, nextRatings, watchedMovies);
+    //await persistUserInfo(watchedMovieIds, nextRatings, watchedMovies);
+
+    await recomputeAndPersistProfile(watchedMovies, nextRatings, watchedMovieIds);
+
     setShowRatingOverlay(false);
     setSelectedMovieForRating(null);
   };
@@ -266,7 +372,10 @@ export default function WatchHistoryScreen() {
     }
 
     setReviews(nextReviews);
-    await saveUserInfo({ watchedMovieIds, watchedMovies, ratings, reviews: nextReviews });
+    //await saveUserInfo({ watchedMovieIds, watchedMovies, ratings, reviews: nextReviews });
+
+    await recomputeAndPersistProfile(watchedMovies, ratings, watchedMovieIds);
+
     setShowReviewOverlay(false);
     setSelectedMovieForReview(null);
     setReviewDraft("");
