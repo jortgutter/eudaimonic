@@ -2,12 +2,6 @@
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-<<<<<<< HEAD
-from app.db.database import get_db
-from app.schemas import TmdbImportResponse, TmdbSearchResponse
-from app.services.tmdb_service import TmdbService
-
-=======
 from backend.app.db.database import get_db
 from backend.app.schemas import TmdbImportResponse, TmdbSearchResponse, TmdbMovieSummary
 from backend.app.services.tmdb_service import TmdbService
@@ -15,7 +9,6 @@ from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresRespo
 from backend.app.services.catalog_import_service import CatalogImportService
 from backend.app.services.catalog_service import CatalogService
 import traceback
->>>>>>> origin/Movie-virtue-auto-importer
 router = APIRouter(prefix="/tmdb", tags=["tmdb"])
 
 
@@ -26,8 +19,29 @@ router = APIRouter(prefix="/tmdb", tags=["tmdb"])
 #     return await TmdbService.search_movies(query=q, page=page)
 
 @router.get("/search", response_model=TmdbSearchResponse)
-async def search_tmdb(q: str, page: int = 1) -> TmdbSearchResponse:
-    return await TmdbService.search_movies(query=q, page=page)
+def search_tmdb(q: str, page: int = 1) -> TmdbSearchResponse:
+    movies = CatalogService.search_movies(query=q)
+
+    results = [
+        TmdbMovieSummary(
+            id=m.id,
+            title=m.title,
+            overview=m.summary,
+            poster_url=m.image_url,
+            release_date=str(m.release_date) if m.release_date else None,
+            vote_average=m.vote_average or 0.0,
+            popularity=0.0,
+            genre_ids=[],
+        )
+        for m in movies
+    ]
+
+    return TmdbSearchResponse(
+        page=1,
+        total_pages=1,
+        total_results=len(results),
+        results=results,
+    )
 
 
 @router.post(

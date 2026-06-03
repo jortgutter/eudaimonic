@@ -1,6 +1,3 @@
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
-import { globalStyles } from "@/constants/globalStyles";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -9,11 +6,17 @@ import {
   Dimensions,
   FlatList,
   Modal,
+  ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { globalStyles } from "@/constants/globalStyles";
 import {
   CatalogMovie,
   getMovieVirtueScores,
@@ -44,6 +47,55 @@ const EMPTY_VIRTUE_SCORES: VirtueScores = {
 };
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
+const VIRTUE_COLORS: Record<string, string> = {
+  wisdom:        "#9af",
+  humanity:      "#2e4",
+  transcendence: "#cc4",
+  justice:       "#a4e",
+  temperance:    "#88a",
+  courage:       "#fa2",
+};
+
+const TraitBar = ({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) => {
+  const clamped = Math.max(0, Math.min(1, value ?? 0));
+  return (
+    <View style={{ marginBottom: 4 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Text style={{ color: "#afa6a6", width: 110, marginRight: 8 }}>
+          {label}:
+        </Text>
+        <View
+          style={{
+            flex: 1,
+            height: 8,
+            backgroundColor: "#544d4d",
+            borderRadius: 4,
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              height: "100%",
+              width: `${clamped * 100}%`,
+              backgroundColor: color,
+            }}
+          />
+        </View>
+        <Text style={{ color: "#afa6a6", width: 36, marginLeft: 8 }}>
+          {clamped.toFixed(2)}
+        </Text>
+      </View>
+    </View>
+  );
+};
 
 async function buildMovieVirtueMap(
   movies: CatalogMovie[]
@@ -406,9 +458,9 @@ async function persistUserInfo(
   };
 
   const filteredWatchedMovies = useMemo(() => {
-  const q = watchHistorySearchQuery.trim().toLowerCase();
+    const q = watchHistorySearchQuery.trim().toLowerCase();
 
-  if (!q) return watchedMovies;
+    if (!q) return watchedMovies;
 
     return watchedMovies.filter((movie) => {
       return (
@@ -630,87 +682,115 @@ async function persistUserInfo(
         </ThemedView>
       </Modal>
 
-      {/* Info overlay */}
-      <Modal visible={showInfoOverlay} animationType="slide">
-        <ThemedView style={styles.infoRoot}>
-          <TouchableOpacity style={globalStyles.infoCloseButton} onPress={() => setShowInfoOverlay(false)}>
-            <ThemedText style={globalStyles.infoCloseButtonText}>Close</ThemedText>
-          </TouchableOpacity>
-
-          <ThemedText type="title">{selectedMovieForInfo?.title}</ThemedText>
+      {/* Info overlay from home screen */}
+      <Modal visible={showInfoOverlay} transparent animationType="fade">
+        <View style={styles.infoModalBackdrop}>
+          <View style={styles.infoModalContent}>
             {selectedMovieForInfo && (
-              <TouchableOpacity
-                style={{
-                  marginTop: 12,
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
-                  backgroundColor: "rgba(255, 59, 48, 0.15)",
-                  borderRadius: 8,
-                  alignSelf: "flex-start",
-                }}
-                onPress={handleDeleteFromInfo}
-              >
-                <ThemedText style={{ color: "#FF3B30", fontWeight: "700" }}>
-                  Remove from history
-                </ThemedText>
-              </TouchableOpacity>
-            )}
-          <View style={globalStyles.infoPosterPlaceholder}>
-            {selectedMovieForInfo?.image_url ? (
-              <Image source={{ uri: selectedMovieForInfo.image_url }} style={styles.infoPoster} />
-            ) : (
-              <ThemedText>Poster</ThemedText>
+              <>
+                <Image
+                  source={{ uri: selectedMovieForInfo.image_url ?? undefined }}
+                  style={styles.infoModalPoster}
+                />
+
+                <Text style={styles.infoModalTitle}>{selectedMovieForInfo.title}</Text>
+
+                {selectedMovieForInfo.release_date ? (
+                  <Text style={styles.infoModalYear}>{selectedMovieForInfo.release_date}</Text>
+                ) : null}
+
+                {selectedMovieForInfo.vote_average != null ? (
+                  <Text style={styles.infoModalRating}>
+                    IMDb: {selectedMovieForInfo.vote_average}/10
+                  </Text>
+                ) : null}
+
+                {ratings[selectedMovieForInfo.id] ? (
+                  <Text style={styles.infoModalUserRating}>
+                    Your rating: {ratings[selectedMovieForInfo.id]}/10
+                  </Text>
+                ) : null}
+
+                <ScrollView style={styles.infoModalScroll} showsVerticalScrollIndicator={false}>
+                  <Text style={styles.infoModalDescription}>
+                    {selectedMovieForInfo.summary || "No summary available."}
+                  </Text>
+
+                  <Text style={styles.infoModalSectionTitle}>Virtue Scores</Text>
+
+                  {isVirtueLoading ? (
+                    <ActivityIndicator style={{ marginVertical: 12 }} />
+                  ) : (
+                    <View style={styles.infoModalTraits}>
+                      {Object.entries(selectedMovieVirtues).map(([key, value]) => (
+                        <TraitBar
+                          key={key}
+                          label={key.charAt(0).toUpperCase() + key.slice(1)}
+                          value={value}
+                          color={VIRTUE_COLORS[key] ?? "#888"}
+                        />
+                      ))}
+                    </View>
+                  )}
+
+                  {reviews[selectedMovieForInfo.id] ? (
+                    <>
+                      <Text style={styles.infoModalSectionTitle}>Your review</Text>
+                      <Text style={styles.infoModalReview}>
+                        {reviews[selectedMovieForInfo.id]}
+                      </Text>
+                    </>
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={styles.infoModalDeleteButton}
+                    onPress={handleDeleteFromInfo}
+                  >
+                    <Text style={styles.infoModalDeleteText}>Remove from history</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+
+                <TouchableOpacity
+                  style={styles.infoModalCloseButton}
+                  onPress={() => {
+                    setShowInfoOverlay(false);
+                    setSelectedMovieForInfo(null);
+                  }}
+                >
+                  <Text style={styles.infoModalCloseText}>Close</Text>
+                </TouchableOpacity>
+              </>
             )}
           </View>
-
-          <ThemedText style={globalStyles.infoPlaceholder}>{selectedMovieForInfo?.summary || "No summary."}</ThemedText>
-
-          <ThemedText type="subtitle">Virtue Scores</ThemedText>
-          {isVirtueLoading ? (
-            <ActivityIndicator />
-          ) : (
-            <View style={styles.virtuesGrid}>
-              {Object.entries(selectedMovieVirtues).map(([k, v]) => (
-                <View key={k} style={styles.virtueRow}>
-                  <ThemedText style={{ fontWeight: "600" }}>{k}</ThemedText>
-                  <ThemedText>{Math.round((v ?? 0) * 100) / 100}</ThemedText>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {selectedMovieForInfo && ratings[selectedMovieForInfo.id] && (
-            <ThemedText>Your rating: {ratings[selectedMovieForInfo.id]}/10</ThemedText>
-          )}
-
-          {selectedMovieForInfo && reviews[selectedMovieForInfo.id] ? (
-            <>
-              <ThemedText type="subtitle" style={styles.infoReviewTitle}>
-                Your review
-              </ThemedText>
-              <ThemedText style={styles.infoReviewText}>{reviews[selectedMovieForInfo.id]}</ThemedText>
-            </>
-          ) : null}
-        </ThemedView>
+        </View>
       </Modal>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  // Screen-level layout 
   container: {
     flex: 1,
     padding: 16,
     alignItems: "center",
     gap: 12,
   },
-
-  // Search bar (global base + local width constraint)   
   searchBar: {
     ...globalStyles.searchBar,
     width: "100%",
     maxWidth: 520,
+  },
+  resetButton: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,0,0,0.15)",
+    alignSelf: "flex-start",
+  },
+  resetButtonText: {
+    color: "#FF3B30",
+    fontWeight: "700",
   },
   listContent: {
     paddingBottom: 120,
@@ -864,30 +944,98 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.08)",
   },
-  infoRoot: {
+
+  // Info overlay styles
+  infoModalBackdrop: {
     flex: 1,
-    padding: 16,
-    paddingTop: 32,
+    backgroundColor: "#0B0C1D",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
-  infoPoster: {
+  infoModalContent: {
     width: "100%",
-    height: "100%",
-    borderRadius: 8,
+    maxWidth: 400,
+    backgroundColor: "#222",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+    maxHeight: "90%",
   },
-  virtuesGrid: {
-    marginTop: 12,
-    gap: 8,
+  infoModalPoster: {
+    width: 180,
+    height: 270,
+    borderRadius: 12,
+    marginBottom: 16,
   },
-  virtueRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 6,
+  infoModalTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "white",
+    textAlign: "center",
   },
-  infoReviewTitle: {
-    marginTop: 16,
-  },
-  infoReviewText: {
+  infoModalYear: {
+    color: "#bbb",
     marginTop: 4,
+  },
+  infoModalRating: {
+    color: "#f5c518",
+    marginTop: 4,
+    fontSize: 16,
+  },
+  infoModalUserRating: {
+    color: "#9BC9FF",
+    marginTop: 4,
+    fontSize: 14,
+  },
+  infoModalScroll: {
+    width: "100%",
+    maxHeight: 320,
+    marginTop: 12,
+  },
+  infoModalDescription: {
+    color: "#b0d0df",
+    textAlign: "justify",
     lineHeight: 20,
+    marginBottom: 16,
+  },
+  infoModalSectionTitle: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 16,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  infoModalTraits: {
+    width: "100%",
+    marginBottom: 16,
+  },
+  infoModalReview: {
+    color: "#b0d0df",
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  infoModalDeleteButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255, 59, 48, 0.15)",
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginBottom: 8,
+  },
+  infoModalDeleteText: {
+    color: "#FF3B30",
+    fontWeight: "700",
+  },
+  infoModalCloseButton: {
+    marginTop: 16,
+    backgroundColor: "#444",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  infoModalCloseText: {
+    color: "white",
+    fontWeight: "600",
   },
 });

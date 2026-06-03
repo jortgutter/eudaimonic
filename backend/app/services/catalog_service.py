@@ -303,9 +303,6 @@ class CatalogService:
 
         where_clauses: list[str] = []
                 # Build parameter mapping for named parameters
-        
-        # Filter out movies below 7 rating
-        where_clauses.append("m.vote_average >= 7")
                 
         params_map: dict[str, Any] = {
             "wisdom": wisdom,
@@ -470,6 +467,12 @@ class CatalogService:
         justice: float,
         temperance: float,
         transcendence: float,
+        wisdom_up: float,
+        courage_up: float,
+        humanity_up: float,
+        justice_up: float,
+        temperance_up: float,
+        transcendence_up: float,
         exclude_ids: str | None = None,
         provider_ids: str | None = None,
         country_code: str = "NL",
@@ -503,9 +506,6 @@ class CatalogService:
         # WHERE clause builder
         # -------------------------
         where_clauses: list[str] = []
-        
-        # Filter out movies below 7 rating
-        where_clauses.append("m.vote_average >= 7")
 
         if exclude_set:
             placeholders = ",".join([f":exclude_{i}" for i in range(len(exclude_set))])
@@ -524,6 +524,24 @@ class CatalogService:
             """)
 
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        
+        trait_scores = {
+            "wisdom": wisdom_up,
+            "courage": courage_up,
+            "humanity": humanity_up,
+            "justice": justice_up,
+            "temperance": temperance_up,
+            "transcendence": transcendence_up,
+        }
+        print(f'trait scores:\n{trait_scores}')
+        
+        stabilized_trait_scores = CatalogService.sharpen_user_profile(user=trait_scores)
+        print(f'stabilized trait scores:\n{stabilized_trait_scores}')
+        sorted_traits = sorted(trait_scores.items(), key=lambda x: x[1], reverse=True)
+        sorted_traits = sorted(trait_scores.items(), key=lambda x: x[1], reverse=True)
+
+        top_traits = sorted_traits[:3]
+        bottom_traits = sorted_traits[-3:]
 
         # -------------------------
         # Shared SQL with mode-based scoring
@@ -586,12 +604,17 @@ class CatalogService:
 
             FROM movie_virtue_scores_wide vs
             JOIN movies m ON m.id = vs.movie_id
+
+            LEFT JOIN reviews r ON r.movie_id = m.id
             LEFT JOIN movie_genres mg ON mg.movie_id = m.id
             LEFT JOIN genres g ON g.id = mg.genre_id
 
             {where_sql}
 
             GROUP BY m.id
+
+            HAVING COUNT(r.id) >= :min_reviews
+
             ORDER BY score DESC
 
             LIMIT 1;
@@ -671,6 +694,14 @@ class CatalogService:
 
             genres = [g for g in str(row["genres"] or "").split(",") if g]
             return CatalogService._row_to_movie(row, genres=genres)
+
+        # -------------------------
+        # Execute both modes
+        # -------------------------
+        best_similar = execute("similar")
+        best_explore = execute("explore")
+
+        return best_similar, best_explore
 
     @staticmethod
     def list_watch_providers(

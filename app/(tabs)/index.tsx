@@ -11,16 +11,10 @@ import {
   ScrollView,
   StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
-<<<<<<< HEAD
-import { calculateMatchScore, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
-=======
+
 import { calculateMatchScore, getBestMatchMovie, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
-<<<<<<< HEAD
->>>>>>> origin/Movie-virtue-auto-importer
-import { loadSelectedProviderIds, loadUserInfo } from "../../src/storage/userinfo";
-=======
 import { loadSelectedProviderIds, loadUserInfo, UserVirtueProfile } from "../../src/storage/userinfo";
->>>>>>> origin/Movie-virtue-auto-importer
+
 // type DbMovie = {
 //   id: number;
 //   title: string;
@@ -90,24 +84,24 @@ const TraitBar = ({
           }}
         >
           {label}: 
-        </Text>
+      </Text>
 
+      <View
+        style={{
+            flex: 1,
+          height: 8,
+            backgroundColor: "#544d4d",
+          borderRadius: 4,
+          overflow: "hidden",
+        }}
+      >
         <View
           style={{
-            flex: 1,
-            height: 8,
-            backgroundColor: "#544d4d",
-            borderRadius: 4,
-            overflow: "hidden",
+            height: "100%",
+            width: `${clamped * 100}%`,
+            backgroundColor: color,
           }}
-        >
-          <View
-            style={{
-              height: "100%",
-              width: `${clamped * 100}%`,
-              backgroundColor: color,
-            }}
-          />
+        />
         </View>
                 <Text
           style={{
@@ -166,39 +160,39 @@ export default function HomeScreen() {
   const recommendationRequestIdRef = useRef(0);
 
 
-  useFocusEffect(
-  useCallback(() => {
+   useFocusEffect(
+    useCallback(() => {
     let cancelled = false;
 
     const load = async () => {
-      try {
-        setPreferencesLoaded(false);
+        try {
+          setPreferencesLoaded(false);
 
-        const [userInfo, providerIds] = await Promise.all([
-          loadUserInfo(),
-          loadSelectedProviderIds(),
-        ]);
+          const [userInfo, providerIds] = await Promise.all([
+            loadUserInfo(),
+            loadSelectedProviderIds(),
+          ]);
 
         if (cancelled) return;
 
-        setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
-        setSelectedProviderIds(providerIds);
-        setUserVirtueProfile(userInfo.userVirtueProfile ?? null);
+          setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
+          setSelectedProviderIds(providerIds);
+          setUserVirtueProfile(userInfo.userVirtueProfile ?? null);
 
-        setPreferencesLoaded(true);
-      } catch (err) {
+          setPreferencesLoaded(true);
+        } catch (err) {
         console.error(err);
-        setPreferencesLoaded(true);
-      }
-    };
+            setPreferencesLoaded(true);
+        }
+      };
 
     load();
 
-    return () => {
+      return () => {
       cancelled = true;
-    };
-  }, [])
-);
+      };
+    }, [])
+  );
 
   
   useEffect(() => {
@@ -346,41 +340,41 @@ export default function HomeScreen() {
               <ScrollView style={styles.scrollContainer}>
                 <Text style={styles.modalDescription}>
                   {selectedMovie.summary}
-                </Text>
+              </Text>
 
-                <View style={styles.traitsContainer}>
-                  <TraitBar
-                    label="Humanity"
-                    value={selectedMovie.Humanity}
-                    color={toggles.Humanity.actColor}
-                  />
-                  <TraitBar
-                    label="Courage"
-                    value={selectedMovie.Courage}
-                    color={toggles.Courage.actColor}
-                  />
-                  <TraitBar
-                    label="Justice"
-                    value={selectedMovie.Justice}
-                    color={toggles.Justice.actColor}
-                  />
-                  <TraitBar
-                    label="Temperance"
-                    value={selectedMovie.Temperance}
-                    color={toggles.Temperance.actColor}
-                  />
-                  <TraitBar
-                    label="Transcendence"
-                    value={selectedMovie.Transcendence}
-                    color={toggles.Transcendence.actColor}
-                  />
-                  <TraitBar
-                    label="Wisdom"
-                    value={selectedMovie.Wisdom}
-                    color={toggles.Wisdom.actColor}
-                  />
-                </View>
-              </ScrollView>
+              <View style={styles.traitsContainer}>
+                <TraitBar
+                  label="Humanity"
+                  value={selectedMovie.Humanity}
+                  color={toggles.Humanity.actColor}
+                />
+                <TraitBar
+                  label="Courage"
+                  value={selectedMovie.Courage}
+                  color={toggles.Courage.actColor}
+                />
+                <TraitBar
+                  label="Justice"
+                  value={selectedMovie.Justice}
+                  color={toggles.Justice.actColor}
+                />
+                <TraitBar
+                  label="Temperance"
+                  value={selectedMovie.Temperance}
+                  color={toggles.Temperance.actColor}
+                />
+                <TraitBar
+                  label="Transcendence"
+                  value={selectedMovie.Transcendence}
+                  color={toggles.Transcendence.actColor}
+                />
+                <TraitBar
+                  label="Wisdom"
+                  value={selectedMovie.Wisdom}
+                  color={toggles.Wisdom.actColor}
+                />
+              </View>
+            </ScrollView>
 
               <TouchableOpacity
                 style={styles.closeButton}
@@ -462,45 +456,96 @@ export default function HomeScreen() {
             </Text>
           </View>
         </View>
-        {bestMatchMovie && (
-          <TouchableOpacity
-            style={[
-              styles.recommendationCard,
-              { borderColor: "#ffd700", borderWidth: 4 }
-            ]}
-            activeOpacity={0.85}
-            onPress={() => openInfoOverlay(bestMatchMovie)}
-          >
-            <View style={styles.cardPosterWrap}>
-              <Image source={{ uri: bestMatchMovie.image_url }} style={styles.cardPoster} />
-              <View style={styles.cardRankBadge}>
-                <Text style={styles.cardRankText}>BEST MATCH</Text>
-              </View>
-            </View>
 
-            <View style={styles.cardBody}>
-              <ThemedText type="subtitle" numberOfLines={2}>
+        {/* Top Picks Row */}
+        <View style={styles.topPicksRow}>
+          {bestMatchMovie && (
+            <View style={styles.topPickContainer}>
+              <TouchableOpacity
+                style={[styles.topPickPosterWrap, { borderWidth: 3, borderColor: "#ffd700" }]}
+                activeOpacity={0.85}
+                onPress={() => openInfoOverlay(bestMatchMovie)}
+              >
+                <Image source={{ uri: bestMatchMovie.image_url }} style={styles.topPickPoster} />
+                <View style={[styles.topPickBadge, { backgroundColor: "#ffd700" }]}>
+                  <Text style={styles.topPickBadgeText}>BEST MATCH</Text>
+                </View>
+              </TouchableOpacity>
+              <ThemedText type="subtitle" style={styles.topPickTitle}>
                 {bestMatchMovie.title}
               </ThemedText>
+            </View>
+          )}
 
-              <Text style={styles.cardMeta}>
-                IMDb {bestMatchMovie.vote_average}/10
-                {bestMatchMovie.release_date ? ` • ${bestMatchMovie.release_date}` : ""}
-              </Text>
+          {exploreMovie && (
+            <View style={styles.topPickContainer}>
+              <TouchableOpacity
+                style={[styles.topPickPosterWrap, { borderWidth: 3, borderColor: "#4caf50" }]}
+                activeOpacity={0.85}
+                onPress={() => openInfoOverlay(exploreMovie)}
+              >
+                <Image source={{ uri: exploreMovie.image_url }} style={styles.topPickPoster} />
+                <View style={[styles.topPickBadge, { backgroundColor: "#4caf50" }]}>
+                  <Text style={styles.topPickBadgeText}>EXPLORE</Text>
+                </View>
+              </TouchableOpacity>
+              <ThemedText type="subtitle" style={styles.topPickTitle}>
+                {exploreMovie.title}
+              </ThemedText>
+            </View>
+          )}
+        </View>
+        
+
+        {/*Regular sorted list*/}
+        {sortedMovies.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateTitle}>Choose a virtue</Text>
+            <Text style={styles.emptyStateText}>
+              Tap one or more virtues above to load movie recommendations.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.recommendationList}>
+
+            {/* {bestMatchMovie && (
+              <TouchableOpacity
+                style={[
+                  styles.recommendationCard,
+              { borderColor: "#ffd700", borderWidth: 4 }
+                ]}
+                activeOpacity={0.85}
+                onPress={() => openInfoOverlay(bestMatchMovie)}
+              >
+                <View style={styles.cardPosterWrap}>
+                  <Image source={{ uri: bestMatchMovie.image_url }} style={styles.cardPoster} />
+                  <View style={styles.cardRankBadge}>
+                    <Text style={styles.cardRankText}>BEST MATCH</Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardBody}>
+                  <ThemedText type="subtitle" numberOfLines={2}>
+                    {bestMatchMovie.title}
+                  </ThemedText>
+
+                  <Text style={styles.cardMeta}>
+                    IMDb {bestMatchMovie.vote_average}/10
+                    {bestMatchMovie.release_date ? ` • ${bestMatchMovie.release_date}` : ""}
+                  </Text>
 
               {/* <View style={styles.scoreBarTrack}>
-                <View
-                  style={[
-                    styles.scoreBarFill,
-                    { width: "100%", backgroundColor: "#ffd700" }
-                  ]}
-                />
-              </View> */}
-            </View>
+                    <View
+                      style={[
+                        styles.scoreBarFill,
+                        { width: "100%", backgroundColor: "#ffd700" }
+                      ]}
+                    /> 
+              </View>
           </TouchableOpacity>
         )}
 
-        {/* EXPLORE */}
+        {/* EXPLORE
         {exploreMovie && (
           <TouchableOpacity
             style={[styles.recommendationCard, { borderColor: "#4caf50", borderWidth: 4 }]}
@@ -524,9 +569,9 @@ export default function HomeScreen() {
               </Text>
             </View>
           </TouchableOpacity>
-        )}
+        )} */}
 
-        {sortedMovies.length === 0 ? (
+        {/* {sortedMovies.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateTitle}>Choose a virtue</Text>
             <Text style={styles.emptyStateText}>
@@ -534,7 +579,7 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : (
-          <View style={styles.recommendationList}>
+          <View style={styles.recommendationList}> */}
 
 
 
@@ -587,7 +632,7 @@ export default function HomeScreen() {
         )}
       </View>
     </ParallaxScrollView>
-    </>
+  </>
   );
 }
 
@@ -802,13 +847,13 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   cardRankBadge: {
-    position: "absolute",
-    top: 8,
-    left: 8,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+  position: "absolute",
+  top: 8,
+  left: 8,
+  backgroundColor: "rgba(0,0,0,0.75)",
+  borderRadius: 999,
+  paddingHorizontal: 6,
+  paddingVertical: 2,
   },
   cardRankText: {
     color: "white",
@@ -835,11 +880,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   cardMeta: {
-<<<<<<< HEAD
-    color: "white",
-=======
     color: "#fcdd6e",
->>>>>>> origin/Movie-virtue-auto-importer
     opacity: 0.75,
     fontSize: 12,
   },
@@ -853,5 +894,51 @@ const styles = StyleSheet.create({
   scoreBarFill: {
     height: "100%",
     borderRadius: 999,
+  },
+  // Top picks row styles
+
+  topPicksRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: "35%", // space between the two picks
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
+  topPickContainer: {
+    alignItems: "center",
+    maxWidth: "45%",
+  },
+  topPickPosterWrap: {
+    position: "relative",
+    borderRadius: 12,
+    overflow: "hidden",
+    elevation: 4, // Android shadow
+    shadowColor: "#000", // iOS shadow
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  topPickPoster: {
+    width: 160,
+    height: 240,
+    borderRadius: 12,
+  },
+  topPickBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    borderRadius: 999,
+    paddingHorizontal: "10%",
+    paddingVertical: "4%",
+  },
+  topPickBadgeText: {
+    color: "black",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  topPickTitle: {
+    marginTop: 12,
+    textAlign: "center",
+    fontWeight: "600",
   },
 });

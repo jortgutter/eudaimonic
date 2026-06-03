@@ -1,8 +1,8 @@
 """Chat endpoints"""
 from fastapi import APIRouter
 
-from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.chat_service import ChatService
+from backend.app.schemas.chat import ChatRequest, ChatResponse
+from backend.app.services.chat_service import ChatService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
