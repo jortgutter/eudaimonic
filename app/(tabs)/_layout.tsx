@@ -4,11 +4,10 @@ import React, { useEffect } from "react";
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function TabLayout() {
   console.log("TAB LAYOUT MOUNTED");
-  const colorScheme = useColorScheme();
+  const colorScheme = "dark";
   useEffect(() => {
     console.log("TAB LAYOUT MOUNTED");
 
