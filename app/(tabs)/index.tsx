@@ -9,8 +9,8 @@ import {
   Modal,
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
-import { calculateMatchScore, getBestMatchMovie, getTopMoviesByTraits, getWatchedMoviesWithScores, ScoredMovie, TraitOptions } from "../../src/db/database";
-import { buildUserVirtueProfileFromMovies, loadSelectedProviderIds, loadUserInfo, UserVirtueProfile } from "../../src/storage/userinfo";
+import { calculateMatchScore, getBestMatchMovie, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
+import { loadSelectedProviderIds, loadUserInfo, UserVirtueProfile } from "../../src/storage/userinfo";
 // type DbMovie = {
 //   id: number;
 //   title: string;
@@ -166,11 +166,11 @@ export default function HomeScreen() {
 
     const run = async () => {
       try {
-        const movies = await getWatchedMoviesWithScores(watchedMovieIds);
+        // const movies = await getWatchedMoviesWithScores(watchedMovieIds);
         if (cancelled) return;
 
-        const profile = buildUserVirtueProfileFromMovies(movies);
-        setUserVirtueProfile(profile);
+        // const profile = buildUserVirtueProfileFromMovies(movies);
+        // setUserVirtueProfile(profile);
       } catch (err) {
         console.error("Failed to build profile", err);
       }

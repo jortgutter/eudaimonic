@@ -1,8 +1,9 @@
 """Read-only access to the local movie catalog SQLite database."""
 from __future__ import annotations
-
+import math
 import os
 import sqlite3
+import numpy as np
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,25 @@ import logging
 
 from backend.app.schemas.catalog import MovieCatalogItem, MovieVirtueScoresResponse, VirtueScoreSet, WatchProviderItem
 
+TRAITS = ["wisdom", "courage", "humanity", "justice", "temperance", "transcendence"]
+
+def dot(a, b):
+    return sum(a[t] * b[t] for t in TRAITS)
+
+
+def norm(v):
+    return math.sqrt(sum(v[t] * v[t] for t in TRAITS))
+
+
+def normalize(v, eps=1e-8):
+    n = norm(v)
+    return {t: v[t] / (n + eps) for t in TRAITS}
+
+
+def cosine_similarity(u, m):
+    nu = normalize(u)
+    nm = normalize(m)
+    return dot(nu, nm)
 
 class CatalogService:
     """Read-only service for the local catalog database."""
@@ -400,8 +420,45 @@ class CatalogService:
             items.append(CatalogService._row_to_movie(row, genres=genres))
 
         return items
+    
+    
+    @staticmethod
+    def sharpen_user_profile_old(user, k=8.0, temperature=0.7):
+        # 1. strong nonlinear amplification
+        sharpened = []
+        for t in TRAITS:
+            x = user[t]
+
+            # signed exponential sharpening
+            if x >= 0:
+                z = math.exp(k * x) - 1
+            else:
+                z = -(math.exp(k * abs(x)) - 1)
+
+            sharpened.append(z)
+
+        # 2. shift to positive space for softmax
+        min_z = min(sharpened)
+        shifted = [z - min_z for z in sharpened]
+
+        # 3. softmax
+        exps = [math.exp(v / temperature) for v in shifted]
+        s = sum(exps)
 
     
+    @staticmethod
+    def sharpen_user_profile(user, k=8.0, temperature=0.7):
+        # 1. strong nonlinear amplification
+        values = np.array([user[t] for t in TRAITS])
+        min_val = np.min(values)
+
+        max_val = np.max(values)
+
+        range = max_val - min_val
+
+        rescaled = (values - min_val) / range
+        return rescaled
+        
     @staticmethod
     def best_match_movies(
         wisdom: float,
@@ -467,6 +524,24 @@ class CatalogService:
             """)
 
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        
+        trait_scores = {
+            "wisdom": wisdom_up,
+            "courage": courage_up,
+            "humanity": humanity_up,
+            "justice": justice_up,
+            "temperance": temperance_up,
+            "transcendence": transcendence_up,
+        }
+        print(f'trait scores:\n{trait_scores}')
+        
+        stabilized_trait_scores = CatalogService.sharpen_user_profile(user=trait_scores)
+        print(f'stabilized trait scores:\n{stabilized_trait_scores}')
+        sorted_traits = sorted(trait_scores.items(), key=lambda x: x[1], reverse=True)
+        sorted_traits = sorted(trait_scores.items(), key=lambda x: x[1], reverse=True)
+
+        top_traits = sorted_traits[:3]
+        bottom_traits = sorted_traits[-3:]
 
         # -------------------------
         # Shared SQL with mode-based scoring
@@ -491,57 +566,73 @@ class CatalogService:
                 COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres,
 
                 (
-                    CASE
-                        WHEN :mode = 'similar' THEN
-                            (
-                                POWER(:uw, 1.5) * vs.Wisdom +
-                                POWER(:uc, 1.5) * vs.Courage +
-                                POWER(:uh, 1.5) * vs.Humanity +
-                                POWER(:uj, 1.5) * vs.Justice +
-                                POWER(:ut, 1.5) * vs.Temperance +
-                                POWER(:uz, 1.5) * vs.Transcendence
-                            )
-                        WHEN :mode = 'explore' THEN
-                            (
-                                (1 - :uw) * vs.Wisdom +
-                                (1 - :uc) * vs.Courage +
-                                (1 - :uh) * vs.Humanity +
-                                (1 - :uj) * vs.Justice +
-                                (1 - :ut) * vs.Temperance +
-                                (1 - :uz) * vs.Transcendence
-                            )
-                    END
+                    :w1 * (
+                        CASE :t1
+                            WHEN 'wisdom' THEN vs.Wisdom
+                            WHEN 'courage' THEN vs.Courage
+                            WHEN 'humanity' THEN vs.Humanity
+                            WHEN 'justice' THEN vs.Justice
+                            WHEN 'temperance' THEN vs.Temperance
+                            WHEN 'transcendence' THEN vs.Transcendence
+                        END
+                    )
+                    +
+                    :w2 * (
+                        CASE :t2
+                            WHEN 'wisdom' THEN vs.Wisdom
+                            WHEN 'courage' THEN vs.Courage
+                            WHEN 'humanity' THEN vs.Humanity
+                            WHEN 'justice' THEN vs.Justice
+                            WHEN 'temperance' THEN vs.Temperance
+                            WHEN 'transcendence' THEN vs.Transcendence
+                        END
+                    )
+                    +
+                    :w3 * (
+                        CASE :t3
+                            WHEN 'wisdom' THEN vs.Wisdom
+                            WHEN 'courage' THEN vs.Courage
+                            WHEN 'humanity' THEN vs.Humanity
+                            WHEN 'justice' THEN vs.Justice
+                            WHEN 'temperance' THEN vs.Temperance
+                            WHEN 'transcendence' THEN vs.Transcendence
+                        END
+                    )
                 )
-                + (:pop_weight * (m.vote_average / 10.0)) AS score
+                +
+                :pop_weight * (m.vote_average / 10.0) AS score
 
             FROM movie_virtue_scores_wide vs
             JOIN movies m ON m.id = vs.movie_id
-            JOIN (
-                SELECT movie_id, COUNT(*) as review_count
-                FROM reviews
-                GROUP BY movie_id
-            ) rc ON rc.movie_id = m.id
+
+            LEFT JOIN reviews r ON r.movie_id = m.id
             LEFT JOIN movie_genres mg ON mg.movie_id = m.id
             LEFT JOIN genres g ON g.id = mg.genre_id
 
             {where_sql}
 
             GROUP BY m.id
+
+            HAVING COUNT(r.id) >= :min_reviews
+
             ORDER BY score DESC
-            LIMIT 1
-        """
+
+            LIMIT 1;
+"""
+      
 
         # -------------------------
         # Base parameters
         # -------------------------
+        
         base_params: dict[str, Any] = {
-            "uw": wisdom_up,
-            "uc": courage_up,
-            "uh": humanity_up,
-            "uj": justice_up,
-            "ut": temperance_up,
-            "uz": transcendence_up,
-            "pop_weight": 0.15,
+            "pop_weight": 0.00,
+            "w1":0.6,
+            "w2": 2.3,
+            "w3": 0.1,
+            "t1": sorted_traits[0][0],
+            "t2": sorted_traits[1][0],
+            "t3": sorted_traits[2][0],
         }
 
         min_reviews = 1 if provider_set else 10
@@ -555,13 +646,42 @@ class CatalogService:
         if exclude_set:
             for i, eid in enumerate(sorted(exclude_set)):
                 base_params[f"exclude_{i}"] = eid
+                
+        def build_params(mode: str):
+            if mode == "similar":
+                traits = top_traits
+                weights = [0.6, 0.3, 0.1]
+            else:
+                traits = bottom_traits
+                weights = [0.6, 0.3, 0.1]
 
+            return {
+                "pop_weight": 0.4,
+
+                "w1": weights[0],
+                "w2": weights[1],
+                "w3": weights[2],
+
+                "t1": traits[0][0],
+                "t2": traits[1][0],
+                "t3": traits[2][0],
+
+                "min_reviews": 1 if provider_set else 10,
+                **({
+                    f"provider_{i}": pid
+                    for i, pid in enumerate(sorted(provider_set))
+                } if provider_set else {}),
+                **({
+                    f"exclude_{i}": eid
+                    for i, eid in enumerate(sorted(exclude_set))
+                } if exclude_set else {}),
+                **({"country_code": country_code} if provider_set else {}),
+            }
         # -------------------------
         # Helper execution function
         # -------------------------
         def execute(mode: str) -> MovieCatalogItem:
-            params = dict(base_params)
-            params["mode"] = mode
+            params = build_params(mode)
 
             with CatalogService._connect() as connection:
                 row = connection.execute(sql, params).fetchone()
