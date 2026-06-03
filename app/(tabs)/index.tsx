@@ -10,7 +10,7 @@ import {
   Pressable, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
 import { calculateMatchScore, getBestMatchMovie, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
-import { loadSelectedProviderIds, loadUserInfo } from "../../src/storage/userinfo";
+import { loadSelectedProviderIds, loadUserInfo, UserVirtueProfile } from "../../src/storage/userinfo";
 // type DbMovie = {
 //   id: number;
 //   title: string;
@@ -102,7 +102,9 @@ export default function HomeScreen() {
     setOverlayVisible(false);
     setSelectedMovie(null);
   }
+  const [userVirtueProfile, setUserVirtueProfile] = useState<UserVirtueProfile | null>(null);
   const [bestMatchMovie, setBestMatchMovie] = useState<ScoredMovie | null>(null);
+  const [exploreMovie, setExploreMovie] = useState<ScoredMovie | null>(null);
   const [selectedMovie, setSelectedMovie] = useState<ScoredMovie | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>([]);
@@ -121,39 +123,65 @@ export default function HomeScreen() {
   const [scoredMovies, setDbMovies] = useState<ScoredMovie[]>([]);
   const recommendationRequestIdRef = useRef(0);
 
+
   useFocusEffect(
-    useCallback(() => {
-      let isCancelled = false;
+  useCallback(() => {
+    let cancelled = false;
 
-      const loadPreferenceState = async () => {
-        try {
-          setPreferencesLoaded(false);
+    const load = async () => {
+      try {
+        setPreferencesLoaded(false);
 
-          const [userInfo, providerIds] = await Promise.all([
-            loadUserInfo(),
-            loadSelectedProviderIds(),
-          ]);
-          if (isCancelled) return;
+        const [userInfo, providerIds] = await Promise.all([
+          loadUserInfo(),
+          loadSelectedProviderIds(),
+        ]);
 
-          setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
-          setSelectedProviderIds(providerIds);
-          setPreferencesLoaded(true);
-        } catch (err) {
-          console.error("Failed to load recommendation filters", err);
-          if (!isCancelled) {
-            setPreferencesLoaded(true);
-          }
-        }
-      };
+        if (cancelled) return;
 
-      loadPreferenceState();
+        setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
+        setSelectedProviderIds(providerIds);
+        setUserVirtueProfile(userInfo.userVirtueProfile ?? null);
 
-      return () => {
-        isCancelled = true;
-      };
-    }, [])
-  );
+        setPreferencesLoaded(true);
+      } catch (err) {
+        console.error(err);
+        setPreferencesLoaded(true);
+      }
+    };
 
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [])
+);
+
+  
+  useEffect(() => {
+    if (!watchedMovieIds.length) return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        // const movies = await getWatchedMoviesWithScores(watchedMovieIds);
+        if (cancelled) return;
+
+        // const profile = buildUserVirtueProfileFromMovies(movies);
+        // setUserVirtueProfile(profile);
+      } catch (err) {
+        console.error("Failed to build profile", err);
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [watchedMovieIds]);
 
   const activeTraits: TraitOptions = useMemo(() => {
     return Object.entries(toggles).reduce((acc, [key, value]) => {
@@ -165,74 +193,37 @@ export default function HomeScreen() {
   }, [toggles]);
 
 
-
-  
-// useEffect(() => {
-//   (async () => {
-//     const userInfo = await loadUserInfo();
-//     setWatchedMovieIds(userInfo.watchedMovieIds ?? []);
-//     setWatchedLoaded(true);
-//   })();
-// }, []);
-
-// useEffect(() => {
-//   let cancelled = false;
-
-//   if (!watchedLoaded) return;
-
-//   const run = async () => {
-//     try {
-//       const movies = await getTopMoviesByTraits(
-//         activeTraits,
-//         watchedMovieIds
-//       );
-
-//       if (!cancelled) {
-//         setDbMovies(movies);
-//       }
-//     } catch (err) {
-//       console.error(err);
-//     }
-//   };
-
-//   run();
-
-//   return () => {
-//     cancelled = true;
-//   };
-// }, [watchedLoaded, watchedIdsKey, activeTraits]);
+  console.log("profile render:", userVirtueProfile);
   useEffect(() => {
-    if (!preferencesLoaded) return;
+    if (!preferencesLoaded || !userVirtueProfile) return;
 
     const requestId = ++recommendationRequestIdRef.current;
     setIsRecommendationsLoading(true);
 
     const run = async () => {
       try {
-        const [movies, bestMatch] = await Promise.all([
-          getTopMoviesByTraits(
+        const [movies, matchResult] = await Promise.all([
+          getTopMoviesByTraits(activeTraits, watchedMovieIds, selectedProviderIds, "NL"),
+          getBestMatchMovie(
             activeTraits,
-            watchedMovieIds,
-            selectedProviderIds,
-            "NL"
-          ),
-          getBestMatchMovie( // <- you implement this API call
-            activeTraits,
+            userVirtueProfile,
             watchedMovieIds,
             selectedProviderIds,
             "NL"
           ),
         ]);
 
-        const mapped = movies.map((m) => ({
-          ...m,
-          match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
-        }));
+        setDbMovies(
+          movies.map((m) => ({
+            ...m,
+            match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
+          }))
+        );
 
-        setDbMovies(mapped);
-        setBestMatchMovie(bestMatch ?? null);
+        setBestMatchMovie(matchResult.best_similar ?? null);
+        setExploreMovie(matchResult.best_explore ?? null);
       } catch (err) {
-        console.error("Failed to load recommendations", err);
+        console.error(err);
       } finally {
         if (recommendationRequestIdRef.current === requestId) {
           setIsRecommendationsLoading(false);
@@ -241,7 +232,13 @@ export default function HomeScreen() {
     };
 
     run();
-  }, [activeTraits, watchedMovieIds, selectedProviderIds, preferencesLoaded]);
+  }, [
+    activeTraits,
+    watchedMovieIds,
+    selectedProviderIds,
+    preferencesLoaded,
+    userVirtueProfile,
+  ]);
 
   const sortedMovies = [...scoredMovies].sort(
     (a,b) => b.match_score - a.match_score
@@ -353,7 +350,7 @@ export default function HomeScreen() {
       headerBackgroundColor={{ light: "#A1CEDC", dark: "#1D3D47" }}
       headerImage={
         <Image
-          source={require("@/assets/images/partial-react-logo.png")}
+          source={require("@/assets/images/eudaimonic_logo.png")}
           style={styles.reactLogo}
         />
       }
@@ -418,6 +415,69 @@ export default function HomeScreen() {
             </Text>
           </View>
         </View>
+        {bestMatchMovie && (
+          <TouchableOpacity
+            style={[
+              styles.recommendationCard,
+              { borderColor: "#ffd700", borderWidth: 2 }
+            ]}
+            activeOpacity={0.85}
+            onPress={() => openInfoOverlay(bestMatchMovie)}
+          >
+            <View style={styles.cardPosterWrap}>
+              <Image source={{ uri: bestMatchMovie.image_url }} style={styles.cardPoster} />
+              <View style={styles.cardRankBadge}>
+                <Text style={styles.cardRankText}>BEST MATCH</Text>
+              </View>
+            </View>
+
+            <View style={styles.cardBody}>
+              <ThemedText type="subtitle" numberOfLines={2}>
+                {bestMatchMovie.title}
+              </ThemedText>
+
+              <Text style={styles.cardMeta}>
+                IMDb {bestMatchMovie.vote_average}/10
+                {bestMatchMovie.release_date ? ` • ${bestMatchMovie.release_date}` : ""}
+              </Text>
+
+              <View style={styles.scoreBarTrack}>
+                <View
+                  style={[
+                    styles.scoreBarFill,
+                    { width: "100%", backgroundColor: "#ffd700" }
+                  ]}
+                />
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* EXPLORE */}
+        {exploreMovie && (
+          <TouchableOpacity
+            style={[styles.recommendationCard, { borderColor: "#4caf50", borderWidth: 2 }]}
+            onPress={() => openInfoOverlay(exploreMovie)}
+          >
+            <View style={styles.cardPosterWrap}>
+              <Image source={{ uri: exploreMovie.image_url }} style={styles.cardPoster} />
+              <View style={styles.cardRankBadge}>
+                <Text style={styles.cardRankText}>EXPLORE</Text>
+              </View>
+            </View>
+
+            <View style={styles.cardBody}>
+              <ThemedText type="subtitle" numberOfLines={2}>
+                {exploreMovie.title}
+              </ThemedText>
+
+              <Text style={styles.cardMeta}>
+                IMDb {exploreMovie.vote_average}/10
+                {exploreMovie.release_date ? ` • ${exploreMovie.release_date}` : ""}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {sortedMovies.length === 0 ? (
           <View style={styles.emptyState}>
@@ -429,43 +489,7 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.recommendationList}>
 
-            {bestMatchMovie && (
-              <TouchableOpacity
-                style={[
-                  styles.recommendationCard,
-                  { borderColor: "#ffd700", borderWidth: 2 }
-                ]}
-                activeOpacity={0.85}
-                onPress={() => openInfoOverlay(bestMatchMovie)}
-              >
-                <View style={styles.cardPosterWrap}>
-                  <Image source={{ uri: bestMatchMovie.image_url }} style={styles.cardPoster} />
-                  <View style={styles.cardRankBadge}>
-                    <Text style={styles.cardRankText}>BEST MATCH</Text>
-                  </View>
-                </View>
 
-                <View style={styles.cardBody}>
-                  <ThemedText type="subtitle" numberOfLines={2}>
-                    {bestMatchMovie.title}
-                  </ThemedText>
-
-                  <Text style={styles.cardMeta}>
-                    IMDb {bestMatchMovie.vote_average}/10
-                    {bestMatchMovie.release_date ? ` • ${bestMatchMovie.release_date}` : ""}
-                  </Text>
-
-                  <View style={styles.scoreBarTrack}>
-                    <View
-                      style={[
-                        styles.scoreBarFill,
-                        { width: "100%", backgroundColor: "#ffd700" }
-                      ]}
-                    />
-                  </View>
-                </View>
-              </TouchableOpacity>
-            )}
 
             {sortedMovies.map((item, index) => (
               <TouchableOpacity
@@ -597,8 +621,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   reactLogo: {
-    height: 178,
-    width: 290,
+    height: "100%",
+    width: "100%",
     bottom: 0,
     left: 0,
     position: "absolute",
