@@ -1,3 +1,7 @@
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { globalStyles } from "@/constants/globalStyles";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -10,10 +14,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
-import { globalStyles } from "@/constants/globalStyles";
 import {
   CatalogMovie,
   getMovieVirtueScores,
@@ -80,6 +80,9 @@ function computeUserVirtueProfile(
 
     const rating = ratings[movie.id] ?? 5.5;
     const weight = rating - 5.5; // center around neutral
+    console.log("movie_id:", movie.title);
+    console.log("rating:", rating);
+    console.log("weight:", weight);
 
     if (weight === 0) continue;
 
@@ -98,6 +101,12 @@ function computeUserVirtueProfile(
       profile[k] /= totalWeight;
     }
   }
+  console.log("wis:", profile.wisdom);
+  console.log("cou:", profile.courage);
+  console.log("hum:", profile.humanity);
+  console.log("justice:", profile.justice);
+  console.log("tem:", profile.temperance);
+  console.log("tra:", profile.transcendence);
 
   return profile;
 }
@@ -246,7 +255,7 @@ async function persistUserInfo(
   nextRatings: RatingsMap,
   nextMovies: CatalogMovie[] = watchedMovies,
   nextReviews: ReviewsMap = reviews,
-  profile?: UserVirtueProfile
+  profile: UserVirtueProfile
 ) {
   try {
     await saveUserInfo({

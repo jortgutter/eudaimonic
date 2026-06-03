@@ -1,4 +1,4 @@
-
+import { UserVirtueProfile } from "../../src/storage/userinfo";
 
 // Change this before deploying!
 //const DEFAULT_HOST = 'http://localhost:8000';
@@ -17,6 +17,36 @@ export type TraitOptions = {
   Transcendence?: boolean;
 };
 
+// export type ScoredMovie = {
+//   id: number;
+//   title: string;
+//   summary: string;
+//   image_url: string;
+//   vote_average: number | null;
+//   release_date: string;
+//   adult: number;
+//   match_score: number;
+//   Humanity: number;
+//   Wisdom: number;
+//   Courage: number;
+//   Temperance: number;
+//   Transcendence: number;
+//   Justice: number;
+// };
+
+
+
+// export type CatalogMovie = {
+//   id: number;
+//   title: string;
+//   summary?: string | null;
+//   image_url?: string | null;
+//   vote_average?: number | null;
+//   release_date?: string | null;
+//   adult?: boolean;
+//   genres?: string[];
+// };
+
 export type ScoredMovie = {
   id: number;
   title: string;
@@ -25,6 +55,7 @@ export type ScoredMovie = {
   vote_average: number | null;
   release_date: string;
   adult: number;
+  genres: string[],
   match_score: number;
   Humanity: number;
   Wisdom: number;
@@ -44,6 +75,28 @@ export type CatalogMovie = {
   adult?: boolean;
   genres?: string[];
 };
+
+export function toScoredMovie(m: CatalogMovie): ScoredMovie {
+  return {
+    id: m.id,
+    title: m.title,
+    summary: m.summary ?? "",
+    image_url: m.image_url ?? "",
+    vote_average: m.vote_average ?? null,
+    release_date: m.release_date ?? "",
+    adult: m.adult ? 1 : 0,
+    genres: m.genres ?? [],
+
+    Wisdom: 0,
+    Courage: 0,
+    Humanity: 0,
+    Justice: 0,
+    Temperance: 0,
+    Transcendence: 0,
+
+    match_score: 0,
+  };
+}
 
 export type TmdbMovieSummary = {
   id: number;
@@ -158,12 +211,55 @@ export async function getCatalogMovies(limit = 100): Promise<CatalogMovie[]> {
   return fetchJson<CatalogMovie[]>(`${API_V1_BASE}/movies?skip=0&limit=${limit}`);
 }
 
+
+export async function getWatchedMoviesWithScores(
+  ids: number[]
+): Promise<ScoredMovie[]> {
+  if (!ids.length) return [];
+
+  const movies = await getMoviesByIds(ids);
+
+  const enriched = await Promise.all(
+    movies.map(async (movie) => {
+      const scores = await getMovieVirtueScores(movie.id);
+
+      return {
+        id: movie.id,
+        title: movie.title,
+        summary: movie.summary ?? "",
+        image_url: movie.image_url ?? "",
+        vote_average: movie.vote_average ?? null,
+        release_date: movie.release_date ?? "",
+        adult: movie.adult ? 1 : 0,
+        genres: movie.genres ?? [],
+
+        match_score: 0,
+        Humanity: scores.humanity,
+        Wisdom: scores.wisdom,
+        Courage: scores.courage,
+        Justice: scores.justice,
+        Temperance: scores.temperance,
+        Transcendence: scores.transcendence,
+      } satisfies ScoredMovie;
+    })
+  );
+
+  return enriched;
+}
+
+
+
+
 export async function getBestMatchMovie(
   traits: TraitOptions,
-  excludeIds: number[],
-  providerIds: number[] = [],
-  countryCode = "NL"
-) {
+  profile: UserVirtueProfile,
+  watchedMovieIds: number[],
+  providerIds: number[],
+  countryCode: string
+): Promise<{
+  best_similar: ScoredMovie;
+  best_explore: ScoredMovie;
+}> {
   const params = new URLSearchParams({
     wisdom: traits.Wisdom ? "1" : "0",
     courage: traits.Courage ? "1" : "0",
@@ -171,10 +267,28 @@ export async function getBestMatchMovie(
     justice: traits.Justice ? "1" : "0",
     temperance: traits.Temperance ? "1" : "0",
     transcendence: traits.Transcendence ? "1" : "0",
-    exclude_ids: excludeIds.join(","),
+    wisdom_up: profile.wisdom.toString(),
+    courage_up: profile.courage.toString(),
+    humanity_up: profile.humanity.toString(),
+    justice_up: profile.justice.toString(),
+    temperance_up: profile.temperance.toString(),
+    transcendence_up: profile.transcendence.toString()
   });
 
-  return fetchJson<CatalogMovie>(
+  if (watchedMovieIds.length > 0) {
+    params.append("exclude_ids", watchedMovieIds.join(","))
+  }
+
+  if (providerIds.length > 0) {
+    params.append("provider_ids", providerIds.join(","));
+    params.append("country_code", countryCode);
+  }
+
+  console.log("requesting best match")
+  return fetchJson<{
+    best_similar: ScoredMovie;
+    best_explore: ScoredMovie;
+  }>(
     `${API_V1_BASE}/movies/best-match?${params.toString()}`
   );
 }

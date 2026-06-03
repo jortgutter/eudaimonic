@@ -52,3 +52,7 @@ backend/app/movies.db-wal
 backend/app/movies.db-shm
 backend/app/database/movies.db-wal
 backend/app/database/movies.db-shm
+backend/app/database/embeddings.pkl
+backend/app/database/movie_cosine_similarities.pkl
+backend/app/database/movie_embeddings.npy
+backend/app/database/virtue_model.pkl
