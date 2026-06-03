@@ -7,7 +7,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
-  Pressable, StyleSheet, Text, TouchableOpacity, View
+  Pressable,
+  ScrollView,
+  StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
 import { calculateMatchScore, getBestMatchMovie, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
 import { loadSelectedProviderIds, loadUserInfo, UserVirtueProfile } from "../../src/storage/userinfo";
@@ -65,27 +67,49 @@ const TraitBar = ({
   const clamped = Math.max(0, Math.min(1, value ?? 0));
 
   return (
-    <View style={{ marginBottom: 8 }}>
-      <Text style={{ marginBottom: 4 }}>
-        {label}: {clamped.toFixed(2)}
-      </Text>
-
+    <View style={{ marginBottom: 4 }}>
       <View
         style={{
-          height: 8,
-          width: "100%",
-          backgroundColor: "#333",
-          borderRadius: 4,
-          overflow: "hidden",
+          flexDirection: "row",
+          alignItems: "center",
         }}
       >
+        <Text
+          style={{
+            color: "#afa6a6",
+            width: 110, // adjust as needed
+            marginRight: 8,
+          }}
+        >
+          {label}: 
+        </Text>
+
         <View
           style={{
-            height: "100%",
-            width: `${clamped * 100}%`,
-            backgroundColor: color,
+            flex: 1,
+            height: 8,
+            backgroundColor: "#544d4d",
+            borderRadius: 4,
+            overflow: "hidden",
           }}
-        />
+        >
+          <View
+            style={{
+              height: "100%",
+              width: `${clamped * 100}%`,
+              backgroundColor: color,
+            }}
+          />
+        </View>
+                <Text
+          style={{
+            color: "#afa6a6",
+            width: 30, // adjust as needed
+            marginLeft: 8,
+          }}
+        >
+          {clamped.toFixed(2)}
+        </Text>
       </View>
     </View>
   );
@@ -301,39 +325,44 @@ export default function HomeScreen() {
               <Text style={styles.modalRating}>
                 IMDb: {selectedMovie.vote_average}/10
               </Text>
+              <ScrollView style={styles.scrollContainer}>
+                <Text style={styles.modalDescription}>
+                  {selectedMovie.summary}
+                </Text>
 
-              <View style={styles.traitsContainer}>
-                <TraitBar
-                  label="Humanity"
-                  value={selectedMovie.Humanity}
-                  color={toggles.Humanity.actColor}
-                />
-                <TraitBar
-                  label="Courage"
-                  value={selectedMovie.Courage}
-                  color={toggles.Courage.actColor}
-                />
-                <TraitBar
-                  label="Justice"
-                  value={selectedMovie.Justice}
-                  color={toggles.Justice.actColor}
-                />
-                <TraitBar
-                  label="Temperance"
-                  value={selectedMovie.Temperance}
-                  color={toggles.Temperance.actColor}
-                />
-                <TraitBar
-                  label="Transcendence"
-                  value={selectedMovie.Transcendence}
-                  color={toggles.Transcendence.actColor}
-                />
-                <TraitBar
-                  label="Wisdom"
-                  value={selectedMovie.Wisdom}
-                  color={toggles.Wisdom.actColor}
-                />
-              </View>
+                <View style={styles.traitsContainer}>
+                  <TraitBar
+                    label="Humanity"
+                    value={selectedMovie.Humanity}
+                    color={toggles.Humanity.actColor}
+                  />
+                  <TraitBar
+                    label="Courage"
+                    value={selectedMovie.Courage}
+                    color={toggles.Courage.actColor}
+                  />
+                  <TraitBar
+                    label="Justice"
+                    value={selectedMovie.Justice}
+                    color={toggles.Justice.actColor}
+                  />
+                  <TraitBar
+                    label="Temperance"
+                    value={selectedMovie.Temperance}
+                    color={toggles.Temperance.actColor}
+                  />
+                  <TraitBar
+                    label="Transcendence"
+                    value={selectedMovie.Transcendence}
+                    color={toggles.Transcendence.actColor}
+                  />
+                  <TraitBar
+                    label="Wisdom"
+                    value={selectedMovie.Wisdom}
+                    color={toggles.Wisdom.actColor}
+                  />
+                </View>
+              </ScrollView>
 
               <TouchableOpacity
                 style={styles.closeButton}
@@ -347,7 +376,7 @@ export default function HomeScreen() {
       </View>
     </Modal>
     <ParallaxScrollView
-      headerBackgroundColor={{ light: "#A1CEDC", dark: "#1D3D47" }}
+      headerBackgroundColor={{ light: "#0B0C1D", dark: "#0B0C1D" }}
       headerImage={
         <Image
           source={require("@/assets/images/eudaimonic_logo.png")}
@@ -356,7 +385,7 @@ export default function HomeScreen() {
       }
     >
       <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">EudAImonic Movie Recommender</ThemedText>
+        <ThemedText  type="title">Movie recommender</ThemedText>
       </ThemedView>
 
       {/* Category filter toggles */}
@@ -419,7 +448,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={[
               styles.recommendationCard,
-              { borderColor: "#ffd700", borderWidth: 2 }
+              { borderColor: "#ffd700", borderWidth: 4 }
             ]}
             activeOpacity={0.85}
             onPress={() => openInfoOverlay(bestMatchMovie)}
@@ -441,14 +470,14 @@ export default function HomeScreen() {
                 {bestMatchMovie.release_date ? ` • ${bestMatchMovie.release_date}` : ""}
               </Text>
 
-              <View style={styles.scoreBarTrack}>
+              {/* <View style={styles.scoreBarTrack}>
                 <View
                   style={[
                     styles.scoreBarFill,
                     { width: "100%", backgroundColor: "#ffd700" }
                   ]}
                 />
-              </View>
+              </View> */}
             </View>
           </TouchableOpacity>
         )}
@@ -456,7 +485,7 @@ export default function HomeScreen() {
         {/* EXPLORE */}
         {exploreMovie && (
           <TouchableOpacity
-            style={[styles.recommendationCard, { borderColor: "#4caf50", borderWidth: 2 }]}
+            style={[styles.recommendationCard, { borderColor: "#4caf50", borderWidth: 4 }]}
             onPress={() => openInfoOverlay(exploreMovie)}
           >
             <View style={styles.cardPosterWrap}>
@@ -547,7 +576,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "#0B0C1D",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -585,17 +614,29 @@ const styles = StyleSheet.create({
     color: "#bbb",
     marginTop: 4,
   },
-
+  scrollContainer: {
+    width: "100%",
+    maxHeight: "40%"
+  },
   modalRating: {
     color: "#f5c518",
     marginTop: 8,
     fontSize: 16,
   },
 
+  modalDescription: {
+    color: "#b0d0df",
+    textAlign: "justify",
+    alignSelf: "center",
+    marginTop: 20,
+    gap: 6,
+    width: "90%",
+  },
+
   traitsContainer: {
     marginTop: 20,
     gap: 6,
-    width: "100%",
+    width: "95%",
   },
 
   closeButton: {
@@ -621,10 +662,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   reactLogo: {
-    height: "100%",
-    width: "100%",
-    bottom: 0,
-    left: 0,
+    height:"100%",
+    maxHeight: "100%",
+    width: "60%",
+    alignSelf:"center",
     position: "absolute",
   },
 
@@ -695,7 +736,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   recommendationsPill: {
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(227, 220, 220, 0.74)",
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -776,6 +817,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   cardMeta: {
+    color: "#fcdd6e",
     opacity: 0.75,
     fontSize: 12,
   },
