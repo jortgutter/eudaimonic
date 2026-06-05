@@ -945,29 +945,31 @@ class CatalogService:
         exclude_ids: str | None = None,
     ): 
         query = """
-        SELECT
-            m.id,
-            m.title,
-            m.summary,
-            m.image_url,
-            m.vote_average,
-            m.release_date,
-            m.adult,
+            SELECT
+                m.id,
+                m.title,
+                m.summary,
+                m.image_url,
+                m.vote_average,
+                m.release_date,
+                m.adult,
 
-            vs.Wisdom,
-            vs.Courage,
-            vs.Humanity,
-            vs.Justice,
-            vs.Temperance,
-            vs.Transcendence,
+                vs.Wisdom,
+                vs.Courage,
+                vs.Humanity,
+                vs.Justice,
+                vs.Temperance,
+                vs.Transcendence,
 
-            COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres
+                COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres
 
-        FROM movie_virtue_scores_wide vs
-        JOIN movies m ON m.id = vs.movie_id
-        LEFT JOIN movie_genres mg ON mg.movie_id = m.id
-        LEFT JOIN genres g ON g.id = mg.genre_id
-        """
+            FROM movie_virtue_scores_wide vs
+            JOIN movies m ON m.id = vs.movie_id
+            LEFT JOIN movie_genres mg ON mg.movie_id = m.id
+            LEFT JOIN genres g ON g.id = mg.genre_id
+
+            GROUP BY m.id
+            """
         with CatalogService._connect() as connection:
             rows = connection.execute(query).fetchall()
 
@@ -975,13 +977,27 @@ class CatalogService:
             wisdom, courage, humanity, justice, temperance, transcendence
         ])
 
-        items = []
-
+        # Build raw items first
+        raw_items = []
         for row in rows:
             genres = [g for g in str(row["genres"] or "").split(",") if g]
-
             movie = CatalogService._row_to_movie(row, genres=genres)
+            raw_items.append(movie)
 
+        # Min-max normalize per virtue across all fetched movies
+        if raw_items:
+            for trait in ["Wisdom", "Courage", "Humanity", "Justice", "Temperance", "Transcendence"]:
+                values = [getattr(m, trait) for m in raw_items]
+                min_v = min(values)
+                max_v = max(values)
+                range_v = max_v - min_v
+                if range_v > 0:
+                    for m in raw_items:
+                        setattr(m, trait, (getattr(m, trait) - min_v) / range_v)
+
+        # Now score and sort
+        items = []
+        for movie in raw_items:
             if has_profile:
                 score = (
                     wisdom * movie.Wisdom +
@@ -993,9 +1009,7 @@ class CatalogService:
                 )
             else:
                 score = movie.vote_average or 0
-
             items.append((score, movie))
 
         items.sort(key=lambda x: x[0], reverse=True)
-
         return [m for _, m in items[:limit]]
