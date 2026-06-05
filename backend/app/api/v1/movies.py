@@ -95,7 +95,7 @@ def best_match_movies(
         "best_similar": best_similar,
         "best_explore": best_explore,
     }
-    
+
 
 @router.get(
     "/recommend",
@@ -164,6 +164,26 @@ def search_movies(
     """Search movies by title, summary, or genre."""
     return CatalogService.search_movies(query=q, skip=skip, limit=limit)
 
+@router.get("/ranked")
+def ranked_movies(
+    wisdom: float | None = None,
+    courage: float | None = None,
+    humanity: float | None = None,
+    justice: float | None = None,
+    temperance: float | None = None,
+    transcendence: float | None = None,
+    limit: int = 50,
+):
+    return CatalogService.ranked_movies(
+        wisdom,
+        courage,
+        humanity,
+        justice,
+        temperance,
+        transcendence,
+        limit,
+    )
+
 
 @router.get("/{movie_id}", response_model=MovieCatalogItem, summary="Get Movie")
 def get_movie(movie_id: int) -> MovieCatalogItem:
@@ -225,3 +245,4 @@ def update_movie(movie_id: int) -> None:
 def delete_movie(movie_id: int) -> None:
     """The local movie catalog is read-only."""
     raise HTTPException(status_code=405, detail="The local movie catalog is read-only")
+

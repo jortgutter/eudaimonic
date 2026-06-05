@@ -12,7 +12,7 @@ import {
   StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
 
-import { calculateMatchScore, getBestMatchMovie, getTopMoviesByTraits, ScoredMovie, TraitOptions } from "../../src/db/database";
+import { calculateMatchScore, fetchRankedMovies, getBestMatchMovie, ScoredMovie, TraitOptions } from "../../src/db/database";
 import { loadSelectedProviderIds, loadUserInfo, UserVirtueProfile } from "../../src/storage/userinfo";
 
 // type DbMovie = {
@@ -239,7 +239,8 @@ export default function HomeScreen() {
     const run = async () => {
       try {
         const [movies, matchResult] = await Promise.all([
-          getTopMoviesByTraits(activeTraits, watchedMovieIds, selectedProviderIds, "NL"),
+          //getTopMoviesByTraits(activeTraits, watchedMovieIds, selectedProviderIds, "NL"),
+          fetchRankedMovies(userVirtueProfile),
           getBestMatchMovie(
             activeTraits,
             userVirtueProfile,

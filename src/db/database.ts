@@ -525,7 +525,7 @@ export async function getTopMoviesByTraits(
     temperance: effectiveTraits.Temperance ? "1" : "0",
     transcendence: effectiveTraits.Transcendence ? "1" : "0",
     rating_weight: "0.4",
-    limit: "20",
+    limit: "50",
   });
 
   if (excludeIds.length > 0) {
@@ -542,6 +542,23 @@ export async function getTopMoviesByTraits(
   );
 
   
+
+  return movies;
+}
+
+export async function fetchRankedMovies(profile?: UserVirtueProfile) {
+  const params = new URLSearchParams({
+    wisdom: profile?.wisdom?.toString() ?? "",
+    courage: profile?.courage?.toString() ?? "",
+    humanity: profile?.humanity?.toString() ?? "",
+    justice: profile?.justice?.toString() ?? "",
+    temperance: profile?.temperance?.toString() ?? "",
+    transcendence: profile?.transcendence?.toString() ?? "",
+  });
+
+  const movies = await fetchJson<ScoredMovie[]>(
+    `${API_V1_BASE}/movies/ranked?${params.toString()}`
+  );
 
   return movies;
 }

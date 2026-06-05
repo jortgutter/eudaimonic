@@ -1,6 +1,7 @@
 """Read-only access to the local movie catalog SQLite database."""
 from __future__ import annotations
 import math
+from multiprocessing.dummy import connection
 import os
 import sqlite3
 import numpy as np
@@ -269,6 +270,156 @@ class CatalogService:
 
         return MovieVirtueScoresResponse(movie=movie, virtue_scores=virtue_scores)
         
+    # @staticmethod 
+    # def recommend_movies(
+    #     wisdom: float,
+    #     courage: float,
+    #     humanity: float,
+    #     justice: float,
+    #     temperance: float,
+    #     transcendence: float,
+    #     rating_weight: float,
+    #     limit: int = 20,
+    #     exclude_ids: str | None = None,
+    #     provider_ids: str | None = None,
+    #     country_code: str = "NL",
+    # ) -> list[MovieCatalogItem]:
+
+    #     exclude_set: set[int] = set()
+
+    #     if exclude_ids:
+    #         exclude_set = {
+    #             int(x)
+    #             for x in exclude_ids.split(",")
+    #             if x.strip().isdigit()
+    #         }
+
+    #     provider_set: set[int] = set()
+    #     if provider_ids:
+    #         provider_set = {
+    #             int(x)
+    #             for x in provider_ids.split(",")
+    #             if x.strip().isdigit()
+    #         }
+
+    #     where_clauses: list[str] = []
+    #             # Build parameter mapping for named parameters
+                
+    #     params_map: dict[str, Any] = {
+    #         "wisdom": wisdom,
+    #         "courage": courage,
+    #         "humanity": humanity,
+    #         "justice": justice,
+    #         "temperance": temperance,
+    #         "transcendence": transcendence,
+    #         "rating_weight": rating_weight,
+    #         "limit": limit,
+    #     }
+        
+    #     if exclude_set:
+    #         placeholders = ",".join(f":exclude_{i}" for i in range(len(exclude_set)))
+    #         for i, eid in enumerate(sorted(exclude_set)):
+    #             params_map[f"exclude_{i}"] = eid
+    #         where_clauses.append(f"m.id NOT IN ({placeholders})")
+
+    #     if provider_set:
+    #         provider_placeholders = ",".join([f":provider_{i}" for i, _ in enumerate(sorted(provider_set))])
+    #         where_clauses.append(
+    #             """
+    #             EXISTS (
+    #                 SELECT 1
+    #                 FROM watch_providers wp
+    #                 WHERE wp.movie_id = m.id
+    #                   AND UPPER(wp.country_code) = UPPER(:country_code)
+    #                   AND wp.provider_id IN ({provider_placeholders})
+    #             )
+    #             """.replace("{provider_placeholders}", provider_placeholders)
+    #         )
+
+    #     where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+    #     # Build SQL using named parameters so repeated trait params don't require
+    #     # careful positional ordering. Provider placeholders are created as
+    #     # :provider_0, :provider_1, ... and country code is :country_code.
+    #     def build_query(min_reviews: int) -> str:
+    #         return f"""
+    #         SELECT
+    #             m.id,
+    #             m.title,
+    #             m.summary,
+    #             m.image_url,
+    #             m.vote_average,
+    #             m.release_date,
+    #             m.adult,
+
+    #             vs.Wisdom,
+    #             vs.Courage,
+    #             vs.Humanity,
+    #             vs.Justice,
+    #             vs.Temperance,
+    #             vs.Transcendence,
+
+    #             COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres,
+
+    #             (
+    #                 (
+    #                     vs.Wisdom * :wisdom +
+    #                     vs.Courage * :courage +
+    #                     vs.Humanity * :humanity +
+    #                     vs.Justice * :justice +
+    #                     vs.Temperance * :temperance +
+    #                     vs.Transcendence * :transcendence
+    #                 )
+    #                 + (:rating_weight * (m.vote_average / 10.0))
+    #             ) AS score
+
+    #         FROM movie_virtue_scores_wide vs
+    #         JOIN movies m ON m.id = vs.movie_id
+    #         LEFT JOIN reviews r ON r.movie_id = m.id
+    #         LEFT JOIN movie_genres mg ON mg.movie_id = m.id
+    #         LEFT JOIN genres g ON g.id = mg.genre_id
+
+    #         {where_sql}
+
+    #         GROUP BY m.id
+
+    #         ORDER BY score DESC
+    #         LIMIT :limit
+    #         """
+
+
+
+    #     # Add where params into params_map; provider placeholders are named provider_0, provider_1, ...
+    #     if provider_set:
+    #         for i, pid in enumerate(sorted(provider_set)):
+    #             params_map[f"provider_{i}"] = pid
+    #         params_map["country_code"] = country_code
+
+    #     # If exclude_set is present, add exclude placeholders
+    #     if exclude_set:
+    #         for i, eid in enumerate(sorted(exclude_set)):
+    #             params_map[f"exclude_{i}"] = eid
+
+    #     logger = logging.getLogger(__name__)
+
+    #     with CatalogService._connect() as connection:
+    #         # Lower review count requirement if filtering by provider, since that may limit results significantly
+    #         min_reviews = 1 if provider_set else 10
+    #         final_sql = build_query(min_reviews)
+    #         logger.info("recommend: executing query; sql len=%d params=%d", len(final_sql), len(params_map))
+    #         logger.debug("recommend: sql=\n%s", final_sql)
+    #         logger.debug("recommend: params=%r", params_map)
+
+    #         rows = connection.execute(final_sql, params_map).fetchall()
+
+    #     items: list[MovieCatalogItem] = []
+
+    #     for row in rows:
+    #         genres = [g for g in str(row["genres"] or "").split(",") if g]
+    #         items.append(CatalogService._row_to_movie(row, genres=genres))
+
+    #     return items
+
     @staticmethod
     def recommend_movies(
         wisdom: float,
@@ -618,7 +769,7 @@ class CatalogService:
             ORDER BY score DESC
 
             LIMIT 1;
-"""
+            """
       
 
         # -------------------------
@@ -771,3 +922,80 @@ class CatalogService:
             items.append(CatalogService._row_to_movie(row, genres=genres))
 
         return items
+    
+    def score_movie_by_profile(profile, movie):
+        return (
+            profile["wisdom"] * movie.Wisdom +
+            profile["courage"] * movie.Courage +
+            profile["humanity"] * movie.Humanity +
+            profile["justice"] * movie.Justice +
+            profile["temperance"] * movie.Temperance +
+            profile["transcendence"] * movie.Transcendence
+        )
+
+    @staticmethod # NEW but doesnt work yet
+    def ranked_movies(
+        wisdom: float | None = None,
+        courage: float | None = None,
+        humanity: float | None = None,
+        justice: float | None = None,
+        temperance: float | None = None,
+        transcendence: float | None = None,
+        limit: int = 50,
+        exclude_ids: str | None = None,
+    ): 
+        query = """
+        SELECT
+            m.id,
+            m.title,
+            m.summary,
+            m.image_url,
+            m.vote_average,
+            m.release_date,
+            m.adult,
+
+            vs.Wisdom,
+            vs.Courage,
+            vs.Humanity,
+            vs.Justice,
+            vs.Temperance,
+            vs.Transcendence,
+
+            COALESCE(GROUP_CONCAT(DISTINCT g.name), '') AS genres
+
+        FROM movie_virtue_scores_wide vs
+        JOIN movies m ON m.id = vs.movie_id
+        LEFT JOIN movie_genres mg ON mg.movie_id = m.id
+        LEFT JOIN genres g ON g.id = mg.genre_id
+        """
+        with CatalogService._connect() as connection:
+            rows = connection.execute(query).fetchall()
+
+        has_profile = all(v is not None for v in [
+            wisdom, courage, humanity, justice, temperance, transcendence
+        ])
+
+        items = []
+
+        for row in rows:
+            genres = [g for g in str(row["genres"] or "").split(",") if g]
+
+            movie = CatalogService._row_to_movie(row, genres=genres)
+
+            if has_profile:
+                score = (
+                    wisdom * movie.Wisdom +
+                    courage * movie.Courage +
+                    humanity * movie.Humanity +
+                    justice * movie.Justice +
+                    temperance * movie.Temperance +
+                    transcendence * movie.Transcendence
+                )
+            else:
+                score = movie.vote_average or 0
+
+            items.append((score, movie))
+
+        items.sort(key=lambda x: x[0], reverse=True)
+
+        return [m for _, m in items[:limit]]

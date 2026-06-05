@@ -110,55 +110,110 @@ async function buildMovieVirtueMap(
   return Object.fromEntries(entries);
 }
 
+// function computeUserVirtueProfile(
+//   movies: CatalogMovie[],
+//   ratings: RatingsMap,
+//   movieVirtueMap: Record<number, VirtueScores>
+// ): UserVirtueProfile {
+//   const profile: UserVirtueProfile = {
+//     wisdom: 0,
+//     courage: 0,
+//     humanity: 0,
+//     justice: 0,
+//     temperance: 0,
+//     transcendence: 0,
+//   };
+
+//   let totalWeight = 0;
+
+//   for (const movie of movies) {
+//     const virtues = movieVirtueMap[movie.id];
+//     if (!virtues) continue;
+
+//     const rating = ratings[movie.id] ?? 5.5;
+//     const weight = rating - 5.5; // center around neutral
+//     console.log("movie_id:", movie.title);
+//     console.log("rating:", rating);
+//     console.log("weight:", weight);
+
+//     if (weight === 0) continue;
+
+//     totalWeight += Math.abs(weight);
+
+//     profile.wisdom += virtues.wisdom * weight;
+//     profile.courage += virtues.courage * weight;
+//     profile.humanity += virtues.humanity * weight;
+//     profile.justice += virtues.justice * weight;
+//     profile.temperance += virtues.temperance * weight;
+//     profile.transcendence += virtues.transcendence * weight;
+//   }
+
+//   if (totalWeight > 0) {
+//     for (const k of Object.keys(profile) as (keyof UserVirtueProfile)[]) {
+//       profile[k] /= totalWeight;
+//     }
+//   }
+//   console.log("wis:", profile.wisdom);
+//   console.log("cou:", profile.courage);
+//   console.log("hum:", profile.humanity);
+//   console.log("justice:", profile.justice);
+//   console.log("tem:", profile.temperance);
+//   console.log("tra:", profile.transcendence);
+
+//   return profile;
+// }
 function computeUserVirtueProfile(
   movies: CatalogMovie[],
   ratings: RatingsMap,
   movieVirtueMap: Record<number, VirtueScores>
 ): UserVirtueProfile {
-  const profile: UserVirtueProfile = {
-    wisdom: 0,
-    courage: 0,
-    humanity: 0,
-    justice: 0,
-    temperance: 0,
-    transcendence: 0,
+  // start from neutral midpoint instead of zero vector
+  let profile: UserVirtueProfile = {
+    wisdom: 0.5,
+    courage: 0.5,
+    humanity: 0.5,
+    justice: 0.5,
+    temperance: 0.5,
+    transcendence: 0.5,
   };
 
-  let totalWeight = 0;
+  const learningRate = 0.1;
 
   for (const movie of movies) {
     const virtues = movieVirtueMap[movie.id];
     if (!virtues) continue;
 
-    const rating = ratings[movie.id] ?? 5.5;
-    const weight = rating - 5.5; // center around neutral
-    console.log("movie_id:", movie.title);
-    console.log("rating:", rating);
-    console.log("weight:", weight);
+    const rating = ratings[movie.id];
+    if (rating == null) continue;
 
-    if (weight === 0) continue;
+    // map rating to preference strength [0,1]
+    const w = (rating - 1) / 9; // 1–10 scale
 
-    totalWeight += Math.abs(weight);
+    if (w <= 0) continue;
 
-    profile.wisdom += virtues.wisdom * weight;
-    profile.courage += virtues.courage * weight;
-    profile.humanity += virtues.humanity * weight;
-    profile.justice += virtues.justice * weight;
-    profile.temperance += virtues.temperance * weight;
-    profile.transcendence += virtues.transcendence * weight;
+    // move user profile toward movie virtue vector
+    profile.wisdom += learningRate * w * (virtues.wisdom - profile.wisdom);
+    profile.courage += learningRate * w * (virtues.courage - profile.courage);
+    profile.humanity += learningRate * w * (virtues.humanity - profile.humanity);
+    profile.justice += learningRate * w * (virtues.justice - profile.justice);
+    profile.temperance += learningRate * w * (virtues.temperance - profile.temperance);
+    profile.transcendence += learningRate * w * (virtues.transcendence - profile.transcendence);
+
+    // ensure virtues stay within [0,1]
+    profile.wisdom = Math.min(1, Math.max(0, profile.wisdom));
+    profile.courage = Math.min(1, Math.max(0, profile.courage));
+    profile.humanity = Math.min(1, Math.max(0, profile.humanity));
+    profile.justice = Math.min(1, Math.max(0, profile.justice));
+    profile.temperance = Math.min(1, Math.max(0, profile.temperance));
+    profile.transcendence = Math.min(1, Math.max(0, profile.transcendence));
+
+    console.log("wis:", profile.wisdom);
+    console.log("cou:", profile.courage);
+    console.log("hum:", profile.humanity);
+    console.log("justice:", profile.justice);
+    console.log("tem:", profile.temperance);
+    console.log("tra:", profile.transcendence);
   }
-
-  if (totalWeight > 0) {
-    for (const k of Object.keys(profile) as (keyof UserVirtueProfile)[]) {
-      profile[k] /= totalWeight;
-    }
-  }
-  console.log("wis:", profile.wisdom);
-  console.log("cou:", profile.courage);
-  console.log("hum:", profile.humanity);
-  console.log("justice:", profile.justice);
-  console.log("tem:", profile.temperance);
-  console.log("tra:", profile.transcendence);
 
   return profile;
 }
