@@ -110,58 +110,6 @@ async function buildMovieVirtueMap(
   return Object.fromEntries(entries);
 }
 
-// function computeUserVirtueProfile(
-//   movies: CatalogMovie[],
-//   ratings: RatingsMap,
-//   movieVirtueMap: Record<number, VirtueScores>
-// ): UserVirtueProfile {
-//   const profile: UserVirtueProfile = {
-//     wisdom: 0,
-//     courage: 0,
-//     humanity: 0,
-//     justice: 0,
-//     temperance: 0,
-//     transcendence: 0,
-//   };
-
-//   let totalWeight = 0;
-
-//   for (const movie of movies) {
-//     const virtues = movieVirtueMap[movie.id];
-//     if (!virtues) continue;
-
-//     const rating = ratings[movie.id] ?? 5.5;
-//     const weight = rating - 5.5; // center around neutral
-//     console.log("movie_id:", movie.title);
-//     console.log("rating:", rating);
-//     console.log("weight:", weight);
-
-//     if (weight === 0) continue;
-
-//     totalWeight += Math.abs(weight);
-
-//     profile.wisdom += virtues.wisdom * weight;
-//     profile.courage += virtues.courage * weight;
-//     profile.humanity += virtues.humanity * weight;
-//     profile.justice += virtues.justice * weight;
-//     profile.temperance += virtues.temperance * weight;
-//     profile.transcendence += virtues.transcendence * weight;
-//   }
-
-//   if (totalWeight > 0) {
-//     for (const k of Object.keys(profile) as (keyof UserVirtueProfile)[]) {
-//       profile[k] /= totalWeight;
-//     }
-//   }
-//   console.log("wis:", profile.wisdom);
-//   console.log("cou:", profile.courage);
-//   console.log("hum:", profile.humanity);
-//   console.log("justice:", profile.justice);
-//   console.log("tem:", profile.temperance);
-//   console.log("tra:", profile.transcendence);
-
-//   return profile;
-// }
 function computeUserVirtueProfile(
   movies: CatalogMovie[],
   ratings: RatingsMap,
@@ -377,12 +325,6 @@ async function persistUserInfo(
     setLoadError("Failed to save watch history.");
   }
 }
-
-  // function searchMovies(movies: CatalogMovie[], query: string) {
-  //   if (!query.trim()) return movies;
-  //   const lowerQuery = query.toLowerCase();
-  //   return movies.filter((movie) => movie.title.toLowerCase().includes(lowerQuery) || (movie.genres ?? []).some((genre) => genre.toLowerCase().includes(lowerQuery)));
-  // }
 
   const addMovieFromTmdb = async (movie: TmdbMovieSummary) => {
     if (isImporting) return;

@@ -56,3 +56,11 @@ backend/app/database/embeddings.pkl
 backend/app/database/movie_cosine_similarities.pkl
 backend/app/database/movie_embeddings.npy
 backend/app/database/virtue_model.pkl
+.firebase/hosting.ZGlzdA.cache
+backend/app/database/movies3.db.wal
+backend/app/database/movies.db?mode=ro
+backend/app/database/movies.db.wal
+
+src/db/database.ts
+backend.zip
+archive.zip

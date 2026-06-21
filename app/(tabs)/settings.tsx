@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { getWatchProviders, WatchProvider } from "../../src/db/database";
 import { loadSelectedProviderIds, saveSelectedProviderIds } from "../../src/storage/userinfo";
 
@@ -82,23 +80,15 @@ export default function SettingsScreen() {
     });
   };
 
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: "#ECE9E3", dark: "#353636" }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#8E8578"
-          name="tv.fill"
-          style={styles.headerImage}
-        />
-      }
-    >
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Watch Providers</ThemedText>
-      </ThemedView>
+return (
+  <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.scrollContent}>
+      {/* Changed from ThemedView to View to drop the weird background box */}
+        <View style={styles.titleContainer}>
+          <ThemedText type="title">Watch Providers</ThemedText>
+        </View>    
       <ThemedText style={styles.subtitle}>
-        Choose one or more providers. Recommendations on Home are restricted to selected providers in NL.
+        Choose one or more providers. Recommendations on the Home screen are restricted to selected providers in the Netherlands.
       </ThemedText>
 
       <View style={styles.actionsRow}>
@@ -122,7 +112,7 @@ export default function SettingsScreen() {
           <Text style={styles.loaderText}>Loading providers...</Text>
         </View>
       ) : (
-        <ScrollView style={styles.providerList} contentContainerStyle={styles.providerListContent}>
+        <View style={styles.providerListContent}>
           {providers.map((provider) => {
             const isActive = selectedSet.has(provider.provider_id);
             return (
@@ -144,34 +134,41 @@ export default function SettingsScreen() {
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
       )}
-    </ParallaxScrollView>
+    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: "#8E8578",
-    bottom: -90,
-    left: -35,
-    position: "absolute",
+  container: {
+    flex: 1,
+    backgroundColor: "#121212", 
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16, 
+    paddingBottom: 32,
   },
   titleContainer: {
     flexDirection: "row",
     gap: 8,
+    marginBottom: 12,
+    backgroundColor: "transparent", 
   },
   subtitle: {
     opacity: 0.8,
-    marginBottom: 12,
+    marginBottom: 20,
+    color: "#E2E2E2", 
   },
   actionsRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   actionButton: {
-    backgroundColor: "rgba(142,133,120,0.18)",
+    backgroundColor: "rgba(255,255,255,0.12)", 
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -179,14 +176,15 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#5A5248",
+    color: "#ECE9E3", 
   },
   selectionSummary: {
     fontWeight: "700",
-    marginBottom: 8,
+    marginBottom: 12,
+    color: "#FFFFFF", 
   },
   errorText: {
-    color: "#C62828",
+    color: "#EF5350",
     marginBottom: 8,
   },
   loaderWrap: {
@@ -196,10 +194,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   loaderText: {
-    opacity: 0.8,
-  },
-  providerList: {
-    maxHeight: 520,
+    color: "#B0BEC5", 
   },
   providerListContent: {
     gap: 8,
@@ -207,32 +202,31 @@ const styles = StyleSheet.create({
   },
   providerRow: {
     borderWidth: 1,
-    borderColor: "rgba(142,133,120,0.25)",
+    borderColor: "rgba(255,255,255,0.1)",
     borderRadius: 12,
     padding: 12,
-    backgroundColor: "rgba(255,255,255,0.45)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     gap: 4,
   },
   providerRowActive: {
     borderColor: "#8E8578",
-    backgroundColor: "rgba(142,133,120,0.18)",
+    backgroundColor: "rgba(142,133,120,0.3)",
   },
   providerRowPressed: {
-    opacity: 0.8,
+    opacity: 0.7,
   },
   providerName: {
     fontWeight: "700",
-    color: "#2D2926",
+    color: "#ECE9E3", 
   },
   providerNameActive: {
-    color: "#201D1A",
+    color: "#FFFFFF", 
   },
   providerStatus: {
     fontSize: 12,
-    opacity: 0.65,
+    color: "#B0B0B0", 
   },
   providerStatusActive: {
-    opacity: 1,
-    color: "#4B443B",
+    color: "#DFDCD7", 
   },
 });

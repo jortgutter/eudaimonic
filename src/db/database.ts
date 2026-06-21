@@ -1,7 +1,6 @@
 import { UserVirtueProfile } from "../../src/storage/userinfo";
 
 // Change this before deploying!
-//const DEFAULT_HOST = 'http://localhost:8000';
 const DEFAULT_HOST = 'http://localhost:8000';
 
 const API_BASE_URL = DEFAULT_HOST;
@@ -16,36 +15,6 @@ export type TraitOptions = {
   Temperance?: boolean;
   Transcendence?: boolean;
 };
-
-// export type ScoredMovie = {
-//   id: number;
-//   title: string;
-//   summary: string;
-//   image_url: string;
-//   vote_average: number | null;
-//   release_date: string;
-//   adult: number;
-//   match_score: number;
-//   Humanity: number;
-//   Wisdom: number;
-//   Courage: number;
-//   Temperance: number;
-//   Transcendence: number;
-//   Justice: number;
-// };
-
-
-
-// export type CatalogMovie = {
-//   id: number;
-//   title: string;
-//   summary?: string | null;
-//   image_url?: string | null;
-//   vote_average?: number | null;
-//   release_date?: string | null;
-//   adult?: boolean;
-//   genres?: string[];
-// };
 
 export type ScoredMovie = {
   id: number;
@@ -448,55 +417,6 @@ export function calculateMatchScore(movie: ScoredMovie, traits: TraitOptions): n
   return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100);
 }
 
-// export async function getTopMoviesByTraits(
-//   traits: TraitOptions
-// ): Promise<ScoredMovie[]> {
-
-//   const hasEnabledTraits = Object.values(traits).some(Boolean);
-//   console.log(hasEnabledTraits);
-//   if (!hasEnabledTraits) return [];
-
-//   const movies = await fetchJson<CatalogMovie[]>(`${API_V1_BASE}/movies?skip=0&limit=100`);
-
-//   const scoredMovies = await Promise.all(
-//     movies.map(async (movie) => {
-//       let virtueScores: VirtueScoresResponse['virtue_scores'] = {};
-
-//       try {
-//         const scoresResponse = await fetchJson<VirtueScoresResponse>(
-//           `${API_V1_BASE}/movies/${movie.id}/virtue-scores`
-//         );
-//         virtueScores = scoresResponse.virtue_scores ?? {};
-//       } catch {
-//         virtueScores = {};
-//       }
-
-//       const mappedMovie: ScoredMovie = {
-//         id: movie.id,
-//         title: movie.title,
-//         summary: movie.summary ?? '',
-//         image_url: movie.image_url ?? '',
-//         vote_average: movie.vote_average ?? null,
-//         release_date: movie.release_date ?? '',
-//         adult: movie.adult ? 1 : 0,
-//         match_score: 0,
-//         Humanity: virtueScores.humanity ?? 0,
-//         Wisdom: virtueScores.wisdom ?? 0,
-//         Courage: virtueScores.courage ?? 0,
-//         Temperance: virtueScores.temperance ?? 0,
-//         Transcendence: virtueScores.transcendence ?? 0,
-//         Justice: virtueScores.justice ?? 0,
-//       };
-
-//       return {
-//         ...mappedMovie,
-//         match_score: calculateMatchScore(mappedMovie, traits),
-//       };
-//     })
-//   );
-
-//   return scoredMovies.sort((a, b) => b.match_score - a.match_score).slice(0, 20);
-// }
 export async function getTopMoviesByTraits(
   traits: TraitOptions,
   excludeIds: number[] = [],
@@ -545,20 +465,102 @@ export async function getTopMoviesByTraits(
 
   return movies;
 }
+export type ResponsiveRecommendResponse = {
+  best_match: ScoredMovie | null;
+  explore: ScoredMovie | null;
+  recommendations: ScoredMovie[];
+};
 
-export async function fetchRankedMovies(profile?: UserVirtueProfile) {
-  const params = new URLSearchParams({
-    wisdom: profile?.wisdom?.toString() ?? "",
-    courage: profile?.courage?.toString() ?? "",
-    humanity: profile?.humanity?.toString() ?? "",
-    justice: profile?.justice?.toString() ?? "",
-    temperance: profile?.temperance?.toString() ?? "",
-    transcendence: profile?.transcendence?.toString() ?? "",
+export async function getResponsiveRecommendations(
+  watchedMovieIds: number[],
+  traits: TraitOptions,
+  providerIds: number[] = [],
+  countryCode = "NL",
+  limit = 20,
+  watchedRatings: number[] = []   // NEW
+): Promise<ResponsiveRecommendResponse> {
+
+  const selectedVirtues: string[] = [];
+  if (traits.Wisdom) selectedVirtues.push("Wisdom");
+  if (traits.Courage) selectedVirtues.push("Courage");
+  if (traits.Humanity) selectedVirtues.push("Humanity");
+  if (traits.Justice) selectedVirtues.push("Justice");
+  if (traits.Temperance) selectedVirtues.push("Temperance");
+  if (traits.Transcendence) selectedVirtues.push("Transcendence");
+
+  const query = new URLSearchParams({
+    watched_movie_ids: watchedMovieIds.join(","),
+    limit: String(limit),
+    country_code: countryCode,
   });
 
-  const movies = await fetchJson<ScoredMovie[]>(
-    `${API_V1_BASE}/movies/ranked?${params.toString()}`
-  );
+  if (selectedVirtues.length > 0) {
+    query.append("selected_virtues", selectedVirtues.join(","));
+  }
 
-  return movies;
+  if (providerIds.length > 0) {
+    query.append("provider_ids", providerIds.join(","));
+  }
+
+  if (watchedRatings.length > 0) {
+    query.append("watched_ratings", watchedRatings.join(","));
+  }
+
+  const response = await fetchJson<{
+    best_match: CatalogMovie | null;
+    explore: CatalogMovie | null;
+    recommendations: CatalogMovie[];
+  }>(`${API_V1_BASE}/movies/responsive-recommend?${query.toString()}`);
+
+  const mapToScoredMovie = async (movie: CatalogMovie | null): Promise<ScoredMovie | null> => {
+    if (!movie) return null;
+
+    let virtueScores: VirtueScores = {
+      wisdom: 0,
+      courage: 0,
+      humanity: 0,
+      justice: 0,
+      temperance: 0,
+      transcendence: 0,
+    };
+
+    try {
+      const scores = await getMovieVirtueScores(movie.id);
+      virtueScores = scores;
+    } catch (e) {
+      console.error("Failed to fetch virtue scores:", e);
+    }
+
+    return {
+      id: movie.id,
+      title: movie.title,
+      summary: movie.summary ?? "",
+      image_url: movie.image_url ?? "",
+      vote_average: movie.vote_average ?? null,
+      release_date: movie.release_date ?? "",
+      adult: movie.adult ? 1 : 0,
+      genres: movie.genres ?? [],
+      match_score: 0,
+      Humanity: virtueScores.humanity,
+      Wisdom: virtueScores.wisdom,
+      Courage: virtueScores.courage,
+      Justice: virtueScores.justice,
+      Temperance: virtueScores.temperance,
+      Transcendence: virtueScores.transcendence,
+    };
+  };
+
+  const [best_match, explore, recommendations] = await Promise.all([
+    mapToScoredMovie(response.best_match),
+    mapToScoredMovie(response.explore),
+    Promise.all(response.recommendations.map(m => mapToScoredMovie(m))).then(
+      results => results.filter((r): r is ScoredMovie => r !== null)
+    ),
+  ]);
+
+  return {
+    best_match,
+    explore,
+    recommendations: recommendations as ScoredMovie[],
+  };
 }

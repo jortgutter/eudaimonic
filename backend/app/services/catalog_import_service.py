@@ -1,19 +1,17 @@
-"""Import TMDb movie data into the local catalog SQLite database."""
+"""Import TMDb movie data into a native DuckDB catalog database."""
 from __future__ import annotations
 
 import logging
-import sqlite3
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import duckdb
 from fastapi import HTTPException, status
 
 from backend.app.core.config import get_settings
 
-
 logger = logging.getLogger("uvicorn.error")
-
 
 prototypes: dict[str, dict[str, list[str]]] = {
     "Wisdom": {
@@ -217,7 +215,7 @@ prototypes: dict[str, dict[str, list[str]]] = {
 
 
 class CatalogImportService:
-    """Fetch, score, and persist TMDb movie data into the local catalog."""
+    """Fetch, score, and persist TMDb movie data into a local native DuckDB catalog."""
 
     @staticmethod
     def _settings():
@@ -234,131 +232,34 @@ class CatalogImportService:
         return path
 
     @staticmethod
-    def _connect() -> sqlite3.Connection:
-        connection = sqlite3.connect(CatalogImportService._db_path(), timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout = 30000")
-        return connection
+    def _connect() -> duckdb.DuckDBPyConnection:
+        # GUARANTEED NATIVE CONNECTION: Direct native driver connect. 
+        # Bypasses SQLite scanner extension and uses DuckDB's native transaction engine.
+        db_str_path = str(CatalogImportService._db_path())
+        return duckdb.connect(db_str_path)
 
     @staticmethod
     def ensure_schema() -> None:
         with CatalogImportService._connect() as connection:
-            connection.execute("PRAGMA busy_timeout = 30000")
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS movies (
-                    id INTEGER PRIMARY KEY,
-                    title TEXT,
-                    summary TEXT,
-                    image_url TEXT,
-                    vote_average REAL,
-                    release_date TEXT,
-                    adult INTEGER
-                );
-
-                CREATE TABLE IF NOT EXISTS genres (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT UNIQUE
-                );
-
-                CREATE TABLE IF NOT EXISTS movie_genres (
-                    movie_id INTEGER,
-                    genre_id INTEGER,
-                    PRIMARY KEY (movie_id, genre_id)
-                );
-
-                CREATE TABLE IF NOT EXISTS keywords (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT UNIQUE
-                );
-
-                CREATE TABLE IF NOT EXISTS movie_keywords (
-                    movie_id INTEGER,
-                    keyword_id INTEGER,
-                    PRIMARY KEY (movie_id, keyword_id)
-                );
-
-                CREATE TABLE IF NOT EXISTS people (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT,
-                    profile_path TEXT,
-                    known_for_department TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS movie_people (
-                    movie_id INTEGER,
-                    person_id INTEGER,
-                    credit_type TEXT,
-                    role_name TEXT,
-                    credit_order INTEGER,
-                    PRIMARY KEY (movie_id, person_id, credit_type, role_name)
-                );
-
-                CREATE TABLE IF NOT EXISTS similar_movies (
-                    movie_id INTEGER,
-                    similar_movie_id INTEGER,
-                    title TEXT,
-                    overview TEXT,
-                    poster_path TEXT,
-                    PRIMARY KEY (movie_id, similar_movie_id)
-                );
-
-                CREATE TABLE IF NOT EXISTS recommended_movies (
-                    movie_id INTEGER,
-                    recommended_movie_id INTEGER,
-                    title TEXT,
-                    overview TEXT,
-                    poster_path TEXT,
-                    PRIMARY KEY (movie_id, recommended_movie_id)
-                );
-
-                CREATE TABLE IF NOT EXISTS watch_providers (
-                    movie_id INTEGER,
-                    country_code TEXT,
-                    provider_type TEXT,
-                    provider_id INTEGER,
-                    provider_name TEXT,
-                    logo_path TEXT,
-                    link TEXT,
-                    PRIMARY KEY (movie_id, country_code, provider_type, provider_id)
-                );
-
-                CREATE TABLE IF NOT EXISTS spoken_languages (
-                    iso_639_1 TEXT PRIMARY KEY,
-                    english_name TEXT,
-                    name TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS movie_spoken_languages (
-                    movie_id INTEGER,
-                    language_code TEXT,
-                    PRIMARY KEY (movie_id, language_code)
-                );
-
-                CREATE TABLE IF NOT EXISTS reviews (
-                    id TEXT PRIMARY KEY,
-                    movie_id INTEGER,
-                    review_text TEXT,
-                    author TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS processed_pages (
-                    year INTEGER,
-                    page INTEGER,
-                    PRIMARY KEY (year, page)
-                );
-
-                CREATE TABLE IF NOT EXISTS movie_virtue_scores_wide (
-                    movie_id INTEGER,
-                    Wisdom REAL,
-                    Courage REAL,
-                    Humanity REAL,
-                    Justice REAL,
-                    Temperance REAL,
-                    Transcendence REAL
-                );
-                """
-            )
+            statements = [
+                "CREATE TABLE IF NOT EXISTS movies (id BIGINT PRIMARY KEY, title TEXT, summary TEXT, image_url TEXT, vote_average REAL, release_date TEXT, adult INTEGER);",
+                "CREATE TABLE IF NOT EXISTS genres (id BIGINT PRIMARY KEY, name TEXT UNIQUE);",
+                "CREATE TABLE IF NOT EXISTS movie_genres (movie_id BIGINT, genre_id BIGINT, PRIMARY KEY (movie_id, genre_id));",
+                "CREATE TABLE IF NOT EXISTS keywords (id BIGINT PRIMARY KEY, name TEXT UNIQUE);",
+                "CREATE TABLE IF NOT EXISTS movie_keywords (movie_id BIGINT, keyword_id BIGINT, PRIMARY KEY (movie_id, keyword_id));",
+                "CREATE TABLE IF NOT EXISTS people (id BIGINT PRIMARY KEY, name TEXT, profile_path TEXT, known_for_department TEXT);",
+                "CREATE TABLE IF NOT EXISTS movie_people (movie_id BIGINT, person_id BIGINT, credit_type TEXT, role_name TEXT, credit_order INTEGER, PRIMARY KEY (movie_id, person_id, credit_type, role_name));",
+                "CREATE TABLE IF NOT EXISTS similar_movies (movie_id BIGINT, similar_movie_id BIGINT, title TEXT, overview TEXT, poster_path TEXT, PRIMARY KEY (movie_id, similar_movie_id));",
+                "CREATE TABLE IF NOT EXISTS recommended_movies (movie_id BIGINT, recommended_movie_id BIGINT, title TEXT, overview TEXT, poster_path TEXT, PRIMARY KEY (movie_id, recommended_movie_id));",
+                "CREATE TABLE IF NOT EXISTS watch_providers (movie_id BIGINT, country_code TEXT, provider_type TEXT, provider_id BIGINT, provider_name TEXT, logo_path TEXT, link TEXT, PRIMARY KEY (movie_id, country_code, provider_type, provider_id));",
+                "CREATE TABLE IF NOT EXISTS spoken_languages (iso_639_1 TEXT PRIMARY KEY, english_name TEXT, name TEXT);",
+                "CREATE TABLE IF NOT EXISTS movie_spoken_languages (movie_id BIGINT, language_code TEXT, PRIMARY KEY (movie_id, language_code));",
+                "CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, movie_id BIGINT, review_text TEXT, author TEXT);",
+                "CREATE TABLE IF NOT EXISTS processed_pages (year INTEGER, page INTEGER, PRIMARY KEY (year, page));",
+                "CREATE TABLE IF NOT EXISTS movie_virtue_scores_wide (movie_id BIGINT, Wisdom REAL, Courage REAL, Humanity REAL, Justice REAL, Temperance REAL, Transcendence REAL);"
+            ]
+            for stmt in statements:
+                connection.execute(stmt)
 
     @staticmethod
     def _tmdb_get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -419,155 +320,188 @@ class CatalogImportService:
         return CatalogImportService._tmdb_get(f"/movie/{tmdb_movie_id}/reviews").get("results", [])
 
     @staticmethod
-    def store_genres(connection: sqlite3.Connection, movie_id: int, genres: list[dict[str, Any]]) -> None:
+    def store_genres(connection: duckdb.DuckDBPyConnection, movie_id: int, genres: list[dict[str, Any]]) -> None:
         for genre in genres:
             genre_id = genre.get("id")
             if genre_id is None:
                 continue
             connection.execute(
                 "INSERT OR IGNORE INTO genres (id, name) VALUES (?, ?)",
-                (genre_id, genre.get("name")),
+                [int(genre_id), str(genre.get("name") or "")]
             )
+
             connection.execute(
                 "INSERT OR IGNORE INTO movie_genres (movie_id, genre_id) VALUES (?, ?)",
-                (movie_id, genre_id),
+                [int(movie_id), int(genre_id)]
             )
 
     @staticmethod
-    def store_keywords(connection: sqlite3.Connection, movie_id: int, keywords: list[dict[str, Any]]) -> None:
+    def store_keywords(connection: duckdb.DuckDBPyConnection, movie_id: int, keywords: list[dict[str, Any]]) -> None:
         for keyword in keywords:
             keyword_id = keyword.get("id")
             if keyword_id is None:
                 continue
             connection.execute(
                 "INSERT OR IGNORE INTO keywords (id, name) VALUES (?, ?)",
-                (keyword_id, keyword.get("name")),
+                [int(keyword_id), str(keyword.get("name") or "")]
             )
+
             connection.execute(
                 "INSERT OR IGNORE INTO movie_keywords (movie_id, keyword_id) VALUES (?, ?)",
-                (movie_id, keyword_id),
+                [int(movie_id), int(keyword_id)]
             )
 
     @staticmethod
-    def store_people(connection: sqlite3.Connection, movie_id: int, credits: dict[str, Any]) -> None:
+    def store_people(connection: duckdb.DuckDBPyConnection, movie_id: int, credits: dict[str, Any]) -> None:
         for person in credits.get("cast", [])[:10]:
+            p_id = int(person["id"])
             connection.execute(
-                "INSERT OR IGNORE INTO people (id, name, profile_path, known_for_department) VALUES (?, ?, ?, ?)",
-                (person["id"], person.get("name"), person.get("profile_path"), person.get("known_for_department")),
-            )
-            connection.execute(
-                "INSERT OR IGNORE INTO movie_people (movie_id, person_id, credit_type, role_name, credit_order) VALUES (?, ?, ?, ?, ?)",
-                (movie_id, person["id"], "cast", person.get("character"), person.get("order")),
+                """
+                INSERT OR IGNORE INTO people
+                (id, name, profile_path, known_for_department)
+                VALUES (?, ?, ?, ?)
+                """,
+                [
+                    p_id,
+                    str(person.get("name") or ""),
+                    person.get("profile_path"),
+                    person.get("known_for_department"),
+                ],
             )
 
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO movie_people
+                (movie_id, person_id, credit_type, role_name, credit_order)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    int(movie_id),
+                    p_id,
+                    "cast",
+                    person.get("character"),
+                    person.get("order"),
+                ],
+            )
         for person in credits.get("crew", [])[:10]:
+            p_id = int(person["id"])
             connection.execute(
                 "INSERT OR IGNORE INTO people (id, name, profile_path, known_for_department) VALUES (?, ?, ?, ?)",
-                (person["id"], person.get("name"), person.get("profile_path"), person.get("known_for_department")),
+                [p_id, str(person.get("name") or ""), person.get("profile_path"), person.get("known_for_department")],
             )
             connection.execute(
                 "INSERT OR IGNORE INTO movie_people (movie_id, person_id, credit_type, role_name, credit_order) VALUES (?, ?, ?, ?, ?)",
-                (movie_id, person["id"], "crew", person.get("job"), person.get("order")),
+                [int(movie_id), p_id, "crew", person.get("job"), person.get("order")],
             )
 
     @staticmethod
-    def store_related_movies(
-        connection: sqlite3.Connection,
-        movie_id: int,
-        rows: list[dict[str, Any]],
-        table_name: str,
-        id_column: str,
-    ) -> None:
+    def store_related_movies(connection: duckdb.DuckDBPyConnection, movie_id: int, rows: list[dict[str, Any]], table_name: str, id_column: str) -> None:
         for related in rows[:10]:
             related_id = related.get("id")
             if related_id is None:
                 continue
             connection.execute(
                 f"INSERT OR IGNORE INTO {table_name} (movie_id, {id_column}, title, overview, poster_path) VALUES (?, ?, ?, ?, ?)",
-                (movie_id, related_id, related.get("title"), related.get("overview"), related.get("poster_path")),
+                [int(movie_id), int(related_id), related.get("title"), related.get("overview"), related.get("poster_path")],
             )
 
     @staticmethod
-    def store_watch_providers(
-        connection: sqlite3.Connection,
-        movie_id: int,
-        providers_by_country: dict[str, Any],
-    ) -> None:
+    def store_watch_providers(connection: duckdb.DuckDBPyConnection, movie_id: int, providers_by_country: dict[str, Any]) -> None:
         for country_code, provider_groups in providers_by_country.items():
             for provider_type in ("flatrate", "rent", "buy", "ads", "free"):
                 for provider in provider_groups.get(provider_type, []):
+                    p_id = int(provider["provider_id"])
                     connection.execute(
                         """
-                        INSERT OR IGNORE INTO watch_providers (
-                            movie_id, country_code, provider_type, provider_id, provider_name, logo_path, link
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        INSERT OR IGNORE INTO watch_providers (movie_id, country_code, provider_type, provider_id, provider_name, logo_path, link) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (
-                            movie_id,
-                            country_code,
-                            provider_type,
-                            provider["provider_id"],
-                            provider.get("provider_name"),
-                            provider.get("logo_path"),
-                            provider_groups.get("link"),
-                        ),
+                        [int(movie_id), str(country_code), str(provider_type), p_id, provider.get("provider_name"), provider.get("logo_path"), provider_groups.get("link")],
                     )
 
     @staticmethod
-    def store_spoken_languages(connection: sqlite3.Connection, movie_id: int, languages: list[dict[str, Any]]) -> None:
+    def store_spoken_languages(connection: duckdb.DuckDBPyConnection, movie_id: int, languages: list[dict[str, Any]]) -> None:
         for language in languages:
             language_code = language.get("iso_639_1")
             if not language_code:
                 continue
             connection.execute(
                 "INSERT OR IGNORE INTO spoken_languages (iso_639_1, english_name, name) VALUES (?, ?, ?)",
-                (language_code, language.get("english_name"), language.get("name")),
+                [str(language_code), language.get("english_name"), language.get("name")],
             )
             connection.execute(
                 "INSERT OR IGNORE INTO movie_spoken_languages (movie_id, language_code) VALUES (?, ?)",
-                (movie_id, language_code),
+                [int(movie_id), str(language_code)],
             )
 
     @staticmethod
-    def store_reviews(connection: sqlite3.Connection, movie_id: int, reviews: list[dict[str, Any]]) -> None:
+    def store_reviews(connection: duckdb.DuckDBPyConnection, movie_id: int, reviews: list[dict[str, Any]]) -> None:
         for review in reviews[:2]:
             if not review.get("id"):
                 continue
             connection.execute(
                 "INSERT OR IGNORE INTO reviews (id, movie_id, review_text, author) VALUES (?, ?, ?, ?)",
-                (review["id"], movie_id, review.get("content"), review.get("author")),
+                [str(review["id"]), int(movie_id), review.get("content"), review.get("author")],
             )
 
     @staticmethod
-    def save_movie_and_related_data(connection: sqlite3.Connection, movie_id: int, title: str, summary: str, details: dict[str, Any]) -> None:
-        image_url = None
-        if details.get("poster_path"):
-            image_url = f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
+    def save_movie_and_related_data(
+        connection: duckdb.DuckDBPyConnection,
+        movie_id: int,
+        title: str,
+        summary: str,
+        details: dict[str, Any],
+    ) -> None:
+        image_url = (
+            f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
+            if details.get("poster_path")
+            else None
+        )
 
-        logger.info("Saving movie %s (%s) to local catalog", movie_id, title)
+        logger.info(
+            "Saving movie %s (%s) to local catalog",
+            movie_id,
+            title,
+        )
+
         connection.execute(
             """
             INSERT OR REPLACE INTO movies (
-                id, title, summary, image_url, vote_average, release_date, adult
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                movie_id,
+                id,
                 title,
                 summary,
+                image_url,
+                vote_average,
+                release_date,
+                adult
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                int(movie_id),
+                str(title),
+                str(summary),
                 image_url,
                 details.get("vote_average"),
                 details.get("release_date"),
                 1 if details.get("adult", False) else 0,
-            ),
+            ],
         )
+
         logger.info("Saved movie %s to local catalog", movie_id)
 
     @staticmethod
     @lru_cache(maxsize=1)
+    def _virtue_bundle():
+        import pickle
+        path = Path(__file__).resolve().parents[1] / "database" / "virtue_model.pkl"
+        with open(path, "rb") as f:
+            return pickle.load(f)
+        
+    @staticmethod
+    @lru_cache(maxsize=1)
     def _model():
         from sentence_transformers import SentenceTransformer
-
         return SentenceTransformer("all-MiniLM-L6-v2")
 
     @staticmethod
@@ -584,78 +518,101 @@ class CatalogImportService:
                     convert_to_numpy=True,
                     normalize_embeddings=True,
                 )
-
         return embeddings
 
     @staticmethod
     def score_movie_summary(summary: str) -> dict[str, Any]:
-        if not summary or not summary.strip():
-            return {
-                virtue: {
-                    "score": 0.0,
-                    "substrengths": {substrength: 0.0 for substrength in substrengths},
-                }
-                for virtue, substrengths in prototypes.items()
-            }
-
-        model = CatalogImportService._model()
-        movie_vector = model.encode([summary], convert_to_numpy=True, normalize_embeddings=True)[0]
-
+        import numpy as np
+        from scipy.special import softmax
+        from scipy.stats import percentileofscore
         from sklearn.metrics.pairwise import cosine_similarity
 
-        results: dict[str, Any] = {}
-        for virtue, substrengths in CatalogImportService._prototype_embeddings().items():
-            substrength_scores: dict[str, float] = {}
-            for substrength, proto_vectors in substrengths.items():
-                similarities = cosine_similarity([movie_vector], proto_vectors)[0]
-                substrength_scores[substrength] = float(sum(similarities) / len(similarities)) if len(similarities) else 0.0
+        bundle = CatalogImportService._virtue_bundle()
+        model = CatalogImportService._model()
 
-            results[virtue] = {
-                "score": float(sum(substrength_scores.values()) / len(substrength_scores)) if substrength_scores else 0.0,
-                "substrengths": substrength_scores,
+        prototype_embeddings = bundle["prototype_embeddings"]
+        reference_df = bundle["reference_df"]
+
+        virtues = list(prototype_embeddings.keys())
+
+        movie_vector = model.encode(
+            summary,
+            convert_to_numpy=True,
+            normalize_embeddings=True
+        )
+
+        raw_scores = {}
+        for virtue, substrengths in prototype_embeddings.items():
+            substrength_scores = []
+            for proto_vectors in substrengths.values():
+                sims = cosine_similarity([movie_vector], proto_vectors)[0]
+                substrength_scores.append(float(np.mean(sims)))
+            raw_scores[virtue] = float(np.mean(substrength_scores))
+
+        raw_vector = np.array([raw_scores[v] for v in virtues])
+        within_scores = {
+            v: float(val)
+            for v, val in zip(virtues, softmax(raw_vector))
+        }
+
+        between_scores = {}
+        for v in virtues:
+            col = f"{v}_raw"
+            between_scores[v] = percentileofscore(
+                reference_df[col],
+                raw_scores[v],
+                kind="rank"
+            ) / 100.0
+
+        alpha = 0.7
+        hybrid_scores = {
+            v: (
+                alpha * between_scores[v]
+                + (1 - alpha) * within_scores[v]
+            )
+            for v in virtues
+        }
+
+        return {
+            v: {
+                "score": hybrid_scores[v],
+                "substrengths": {}
             }
-
-        return results
+            for v in virtues
+        }
 
     @staticmethod
-    def save_virtue_scores(connection: sqlite3.Connection, movie_id: int, scores: dict[str, Any]) -> None:
-        existing = connection.execute(
-            """
-            SELECT 1
-            FROM movie_virtue_scores_wide
-            WHERE movie_id = ?
-            LIMIT 1
-            """,
-            (movie_id,),
-        ).fetchone()
-
-        if existing is not None:
-            logger.info("Skipping virtue-score insert for movie %s because scores already exist", movie_id)
-            return
-
+    def save_virtue_scores(connection: duckdb.DuckDBPyConnection, movie_id: int, scores: dict[str, Any]) -> None:
         logger.info("Saving virtue scores for movie %s to local catalog", movie_id)
         connection.execute(
             """
-            INSERT INTO movie_virtue_scores_wide (
-                movie_id, Wisdom, Courage, Humanity, Justice, Temperance, Transcendence
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
+            INSERT OR REPLACE INTO movie_virtue_scores_wide
             (
                 movie_id,
-                scores["Wisdom"]["score"],
-                scores["Courage"]["score"],
-                scores["Humanity"]["score"],
-                scores["Justice"]["score"],
-                scores["Temperance"]["score"],
-                scores["Transcendence"]["score"],
-            ),
+                Wisdom,
+                Courage,
+                Humanity,
+                Justice,
+                Temperance,
+                Transcendence
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                int(movie_id),
+                float(scores["Wisdom"]["score"]),
+                float(scores["Courage"]["score"]),
+                float(scores["Humanity"]["score"]),
+                float(scores["Justice"]["score"]),
+                float(scores["Temperance"]["score"]),
+                float(scores["Transcendence"]["score"]),
+            ],
         )
         logger.info("Saved virtue scores for movie %s to local catalog", movie_id)
 
     @staticmethod
     def import_movie(tmdb_movie_id: int) -> dict[str, Any]:
-        """Fetch a TMDb movie, persist it locally, and compute virtue scores."""
-
+        """Fetch a TMDb movie, persist it locally via native DuckDB storage, and compute virtue scores."""
         CatalogImportService.ensure_schema()
 
         details = CatalogImportService.fetch_movie_details(tmdb_movie_id)
@@ -664,64 +621,49 @@ class CatalogImportService:
         logger.info("Importing TMDb movie %s (%s)", tmdb_movie_id, title)
 
         with CatalogImportService._connect() as connection:
-            CatalogImportService.save_movie_and_related_data(connection, tmdb_movie_id, title, summary, details)
-            CatalogImportService.store_genres(connection, tmdb_movie_id, details.get("genres", []))
-            CatalogImportService.store_keywords(connection, tmdb_movie_id, CatalogImportService.fetch_keywords(tmdb_movie_id))
-            CatalogImportService.store_people(connection, tmdb_movie_id, CatalogImportService.fetch_credits(tmdb_movie_id))
-            CatalogImportService.store_related_movies(
-                connection,
-                tmdb_movie_id,
-                CatalogImportService.fetch_similar_movies(tmdb_movie_id),
-                "similar_movies",
-                "similar_movie_id",
-            )
-            CatalogImportService.store_related_movies(
-                connection,
-                tmdb_movie_id,
-                CatalogImportService.fetch_recommendations(tmdb_movie_id),
-                "recommended_movies",
-                "recommended_movie_id",
-            )
-            CatalogImportService.store_watch_providers(
-                connection,
-                tmdb_movie_id,
-                CatalogImportService.fetch_watch_providers(tmdb_movie_id),
-            )
-            CatalogImportService.store_spoken_languages(connection, tmdb_movie_id, details.get("spoken_languages", []))
-            CatalogImportService.store_reviews(connection, tmdb_movie_id, CatalogImportService.fetch_reviews(tmdb_movie_id))
+            connection.execute("BEGIN TRANSACTION;")
+            try:
+                CatalogImportService.save_movie_and_related_data(connection, tmdb_movie_id, title, summary, details)
+                CatalogImportService.store_genres(connection, tmdb_movie_id, details.get("genres", []))
+                CatalogImportService.store_keywords(connection, tmdb_movie_id, CatalogImportService.fetch_keywords(tmdb_movie_id))
+                CatalogImportService.store_people(connection, tmdb_movie_id, CatalogImportService.fetch_credits(tmdb_movie_id))
+                
+                CatalogImportService.store_related_movies(connection, tmdb_movie_id, CatalogImportService.fetch_similar_movies(tmdb_movie_id), "similar_movies", "similar_movie_id")
+                CatalogImportService.store_related_movies(connection, tmdb_movie_id, CatalogImportService.fetch_recommendations(tmdb_movie_id), "recommended_movies", "recommended_movie_id")
+                CatalogImportService.store_watch_providers(connection, tmdb_movie_id, CatalogImportService.fetch_watch_providers(tmdb_movie_id))
+                CatalogImportService.store_spoken_languages(connection, tmdb_movie_id, details.get("spoken_languages", []))
+                CatalogImportService.store_reviews(connection, tmdb_movie_id, CatalogImportService.fetch_reviews(tmdb_movie_id))
 
-            existing_scores = connection.execute(
-                """
-                SELECT Wisdom, Courage, Humanity, Justice, Temperance, Transcendence
-                FROM movie_virtue_scores_wide
-                WHERE movie_id = ?
-                ORDER BY rowid DESC
-                LIMIT 1
-                """,
-                (tmdb_movie_id,),
-            ).fetchone()
+                existing_scores = connection.execute(
+                    "SELECT Wisdom, Courage, Humanity, Justice, Temperance, Transcendence FROM movie_virtue_scores_wide WHERE movie_id = ? LIMIT 1",
+                    [int(tmdb_movie_id)],
+                ).fetchone()
 
-            if existing_scores is None:
-                scores = CatalogImportService.score_movie_summary(summary)
-                CatalogImportService.save_virtue_scores(connection, tmdb_movie_id, scores)
-            else:
-                scores = {
-                    "Wisdom": {"score": float(existing_scores["Wisdom"] or 0.0), "substrengths": {}},
-                    "Courage": {"score": float(existing_scores["Courage"] or 0.0), "substrengths": {}},
-                    "Humanity": {"score": float(existing_scores["Humanity"] or 0.0), "substrengths": {}},
-                    "Justice": {"score": float(existing_scores["Justice"] or 0.0), "substrengths": {}},
-                    "Temperance": {"score": float(existing_scores["Temperance"] or 0.0), "substrengths": {}},
-                    "Transcendence": {"score": float(existing_scores["Transcendence"] or 0.0), "substrengths": {}},
-                }
+                if existing_scores is None:
+                    scores = CatalogImportService.score_movie_summary(summary)
+                    CatalogImportService.save_virtue_scores(connection, tmdb_movie_id, scores)
+                else:
+                    scores = {
+                        "Wisdom": {"score": existing_scores[0]},
+                        "Courage": {"score": existing_scores[1]},
+                        "Humanity": {"score": existing_scores[2]},
+                        "Justice": {"score": existing_scores[3]},
+                        "Temperance": {"score": existing_scores[4]},
+                        "Transcendence": {"score": existing_scores[5]},
+                    }
+                connection.execute("COMMIT;")
+            except Exception as e:
+                connection.execute("ROLLBACK;")
+                logger.error("Transaction failed during import of movie %s: %s", tmdb_movie_id, str(e))
+                raise e
 
-            logger.info("Finished importing TMDb movie %s (%s)", tmdb_movie_id, title)
         return {
-            "movie_id": tmdb_movie_id,
-            "title": title,
+            "movie_id": tmdb_movie_id, 
+            "title": title, 
             "summary": summary,
-            "scores": scores,
+            "scores": {k: v["score"] if isinstance(v, dict) and "score" in v else v for k, v in scores.items()}
         }
-
+    
     @staticmethod
     def import_movie_with_scores(tmdb_movie_id: int) -> None:
         """Import a movie and generate virtue scores."""

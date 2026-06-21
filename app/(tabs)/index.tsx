@@ -14,41 +14,6 @@ import {
 import { calculateMatchScore, getResponsiveRecommendations, ScoredMovie, TraitOptions, ResponsiveRecommendResponse } from "../../src/db/database";
 import { loadSelectedProviderIds, loadUserInfo, UserVirtueProfile } from "../../src/storage/userinfo";
 
-// type DbMovie = {
-//   id: number;
-//   title: string;
-//   poster:string,
-//   year: number;
-//   rating: number;
-//   genre: string;
-//   humanity: number;
-//   courage: number;
-//   justice: number;
-//   purpose: number;
-//   restraint: number;
-//   wisdom: number;
-// };
-
-// type Trait =
-//   | "humanity"
-//   | "courage"
-//   | "justice"
-//   | "purpose"
-//   | "restraint"
-//   | "wisdom";
-
-// function computeScore(movie: any, activeTraits: TraitOptions[]): number {
-//   if (activeTraits.length === 0) return 0;
-
-//   const sum = activeTraits.reduce((acc, trait) => {
-//     return acc + (movie[trait] ?? 0);
-//   }, 0)
-
-//   return sum/ activeTraits.length
-// }
-//const movies: Movie[] = MovieCatalogue;
-
-
 /** Maps a 0–100 recommendation score to a colour. */
 function scoreColor(score: number): string {
   if (score >= 80) return "#4caf50";
@@ -278,20 +243,6 @@ export default function HomeScreen() {
     (a,b) => b.match_score - a.match_score
   );
 
-  // Filter by active category toggles; show all when none are active
-  // const filteredMovies: RecommendedMovie[] =
-  //   activeCategories.length === 0
-  //     ? allRecommendedMovies
-  //     : allRecommendedMovies.filter((movie) =>
-  //         movie.categories.some((cat) => activeCategories.includes(cat))
-  //       );
-
-  // // Sort by recommendation score descending (nulls last)
-  // const sortedMovies = [...filteredMovies].sort((a, b) => {
-  //   if (a.recommendationScore === null) return 1;
-  //   if (b.recommendationScore === null) return -1;
-  //   return b.recommendationScore - a.recommendationScore;
-  // });
 
   function toggle(key: keyof typeof toggles) {
     console.log(activeTraits);
@@ -509,81 +460,6 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={styles.recommendationList}>
-
-            {/* {bestMatchMovie && (
-              <TouchableOpacity
-                style={[
-                  styles.recommendationCard,
-              { borderColor: "#ffd700", borderWidth: 4 }
-                ]}
-                activeOpacity={0.85}
-                onPress={() => openInfoOverlay(bestMatchMovie)}
-              >
-                <View style={styles.cardPosterWrap}>
-                  <Image source={{ uri: bestMatchMovie.image_url }} style={styles.cardPoster} />
-                  <View style={styles.cardRankBadge}>
-                    <Text style={styles.cardRankText}>BEST MATCH</Text>
-                  </View>
-                </View>
-
-                <View style={styles.cardBody}>
-                  <ThemedText type="subtitle" numberOfLines={2}>
-                    {bestMatchMovie.title}
-                  </ThemedText>
-
-                  <Text style={styles.cardMeta}>
-                    IMDb {bestMatchMovie.vote_average}/10
-                    {bestMatchMovie.release_date ? ` • ${bestMatchMovie.release_date}` : ""}
-                  </Text>
-
-              {/* <View style={styles.scoreBarTrack}>
-                    <View
-                      style={[
-                        styles.scoreBarFill,
-                        { width: "100%", backgroundColor: "#ffd700" }
-                      ]}
-                    /> 
-              </View>
-          </TouchableOpacity>
-        )}
-
-        {/* EXPLORE
-        {exploreMovie && (
-          <TouchableOpacity
-            style={[styles.recommendationCard, { borderColor: "#4caf50", borderWidth: 4 }]}
-            onPress={() => openInfoOverlay(exploreMovie)}
-          >
-            <View style={styles.cardPosterWrap}>
-              <Image source={{ uri: exploreMovie.image_url }} style={styles.cardPoster} />
-              <View style={styles.cardRankBadge}>
-                <Text style={styles.cardRankText}>EXPLORE</Text>
-              </View>
-            </View>
-
-            <View style={styles.cardBody}>
-              <ThemedText type="subtitle" numberOfLines={2}>
-                {exploreMovie.title}
-              </ThemedText>
-
-              <Text style={styles.cardMeta}>
-                IMDb {exploreMovie.vote_average}/10
-                {exploreMovie.release_date ? ` • ${exploreMovie.release_date}` : ""}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )} */}
-
-        {/* {sortedMovies.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateTitle}>Choose a virtue</Text>
-            <Text style={styles.emptyStateText}>
-              Tap one or more virtues above to load movie recommendations.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.recommendationList}> */}
-
-
 
             {sortedMovies.map((item, index) => (
               <TouchableOpacity
