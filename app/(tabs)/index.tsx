@@ -11,8 +11,7 @@ import {
   ScrollView,
   StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
-
-import { calculateMatchScore, fetchRankedMovies, getBestMatchMovie, ScoredMovie, TraitOptions } from "../../src/db/database";
+import { calculateMatchScore, getResponsiveRecommendations, ScoredMovie, TraitOptions, ResponsiveRecommendResponse } from "../../src/db/database";
 import { loadSelectedProviderIds, loadUserInfo, UserVirtueProfile } from "../../src/storage/userinfo";
 
 // type DbMovie = {
@@ -238,27 +237,25 @@ export default function HomeScreen() {
 
     const run = async () => {
       try {
-        const [movies, matchResult] = await Promise.all([
-          //getTopMoviesByTraits(activeTraits, watchedMovieIds, selectedProviderIds, "NL"),
-          fetchRankedMovies(userVirtueProfile),
-          getBestMatchMovie(
-            activeTraits,
-            userVirtueProfile,
-            watchedMovieIds,
-            selectedProviderIds,
-            "NL"
-          ),
-        ]);
-
-        setDbMovies(
-          movies.map((m) => ({
-            ...m,
-            match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
-          }))
+        
+        // Use the new unified responsive recommendation endpoint
+        const response = await getResponsiveRecommendations(
+          watchedMovieIds,
+          activeTraits,
+          selectedProviderIds,
+          "NL",
+          20
         );
 
-        setBestMatchMovie(matchResult.best_similar ?? null);
-        setExploreMovie(matchResult.best_explore ?? null);
+        // Map recommendations with match scores
+        const moviesWithScores = response.recommendations.map((m) => ({
+          ...m,
+          match_score: calculateMatchScore(m as ScoredMovie, activeTraits),
+        }));
+
+        setDbMovies(moviesWithScores);
+        setBestMatchMovie(response.best_match);
+        setExploreMovie(response.explore);
       } catch (err) {
         console.error(err);
       } finally {
@@ -401,32 +398,36 @@ export default function HomeScreen() {
         <ThemedText  type="title">Movie recommender</ThemedText>
       </ThemedView>
 
-      {/* Category filter toggles */}
-      <View style={styles.buttonContainer}>
-        {Object.entries(toggles).map(([key, value]) => {
-          const bg = value.state
-            ? value.actColor
-            : value.deactColor;
-          return (
-            <Pressable
-              key={key}
-              onPress={() => toggle(key as keyof typeof toggles)}
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: bg },
-
-                // active = 'popped out'
-                value.state && styles.active,
-
-                // pressed = slight push-in feedback
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.text}>{key}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+{/* Category filter toggles */}
+<View style={styles.buttonContainer}>
+  {Object.entries(toggles).map(([key, value]) => {
+    const bg = value.state
+      ? value.actColor
+      : value.deactColor;
+    return (
+      <Pressable
+        key={key}
+        onPress={() => toggle(key as keyof typeof toggles)}
+        style={({ pressed }) => [
+          styles.button,
+          { backgroundColor: bg },
+          value.state && styles.active,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={[
+          styles.text, 
+          { 
+            color: value.state ? "#111" : "#fff",
+            fontWeight: "700" // Makes the text bold
+          }
+        ]}>
+          {key}
+        </Text>
+      </Pressable>
+    );
+  })}
+</View>
 
       {/* <View style={{ marginTop: 20 }}>
         {filteredMovies.map((movie) => (
@@ -446,7 +447,7 @@ export default function HomeScreen() {
             <Text style={styles.recommendationsSubtext}>
               {sortedMovies.length} matching movies
               {selectedProviderIds.length > 0
-                ? ` on ${selectedProviderIds.length} provider${selectedProviderIds.length > 1 ? "s" : ""}`
+                ? ` for ${selectedProviderIds.length} provider${selectedProviderIds.length > 1 ? "s" : ""}`
                 : ""}
             </Text>
           </View>
@@ -458,44 +459,44 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Top Picks Row */}
-        <View style={styles.topPicksRow}>
-          {bestMatchMovie && (
-            <View style={styles.topPickContainer}>
-              <TouchableOpacity
-                style={[styles.topPickPosterWrap, { borderWidth: 3, borderColor: "#ffd700" }]}
-                activeOpacity={0.85}
-                onPress={() => openInfoOverlay(bestMatchMovie)}
-              >
-                <Image source={{ uri: bestMatchMovie.image_url }} style={styles.topPickPoster} />
-                <View style={[styles.topPickBadge, { backgroundColor: "#ffd700" }]}>
-                  <Text style={styles.topPickBadgeText}>BEST MATCH</Text>
-                </View>
-              </TouchableOpacity>
-              <ThemedText type="subtitle" style={styles.topPickTitle}>
-                {bestMatchMovie.title}
-              </ThemedText>
-            </View>
-          )}
-
-          {exploreMovie && (
-            <View style={styles.topPickContainer}>
-              <TouchableOpacity
-                style={[styles.topPickPosterWrap, { borderWidth: 3, borderColor: "#4caf50" }]}
-                activeOpacity={0.85}
-                onPress={() => openInfoOverlay(exploreMovie)}
-              >
-                <Image source={{ uri: exploreMovie.image_url }} style={styles.topPickPoster} />
-                <View style={[styles.topPickBadge, { backgroundColor: "#4caf50" }]}>
-                  <Text style={styles.topPickBadgeText}>EXPLORE</Text>
-                </View>
-              </TouchableOpacity>
-              <ThemedText type="subtitle" style={styles.topPickTitle}>
-                {exploreMovie.title}
-              </ThemedText>
-            </View>
-          )}
+{/* Top Picks Row */}
+<View style={styles.topPicksRow}>
+  {bestMatchMovie && (
+    <View style={styles.topPickContainer}>
+      <TouchableOpacity
+        style={[styles.topPickPosterWrap, { borderColor: "#ffd700" }]}
+        activeOpacity={0.85}
+        onPress={() => openInfoOverlay(bestMatchMovie)}
+      >
+        <Image source={{ uri: bestMatchMovie.image_url }} style={styles.topPickPoster} />
+        <View style={[styles.topPickBadge, { backgroundColor: "#ffd700" }]}>
+          <Text style={styles.topPickBadgeText}>BEST MATCH</Text>
         </View>
+      </TouchableOpacity>
+      <ThemedText type="subtitle" numberOfLines={2} style={styles.topPickTitle}>
+        {bestMatchMovie.title}
+      </ThemedText>
+    </View>
+  )}
+
+  {exploreMovie && (
+    <View style={styles.topPickContainer}>
+      <TouchableOpacity
+        style={[styles.topPickPosterWrap, { borderColor: "#4caf50" }]}
+        activeOpacity={0.85}
+        onPress={() => openInfoOverlay(exploreMovie)}
+      >
+        <Image source={{ uri: exploreMovie.image_url }} style={styles.topPickPoster} />
+        <View style={[styles.topPickBadge, { backgroundColor: "#4caf50" }]}>
+          <Text style={styles.topPickBadgeText}>EXPLORE</Text>
+        </View>
+      </TouchableOpacity>
+      <ThemedText type="subtitle" numberOfLines={2} style={styles.topPickTitle}>
+        {exploreMovie.title}
+      </ThemedText>
+    </View>
+  )}
+</View>
         
 
         {/*Regular sorted list*/}
@@ -503,7 +504,7 @@ export default function HomeScreen() {
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateTitle}>Choose a virtue</Text>
             <Text style={styles.emptyStateText}>
-              Tap one or more virtues above to load movie recommendations.
+              Add a movie to your watch history, then tap one or more virtues above to load movie recommendations.
             </Text>
           </View>
         ) : (
@@ -793,6 +794,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     opacity: 0.7,
     fontSize: 12,
+    color: "#E2E2E2",
   },
   recommendationsTitleRow: {
     flexDirection: "row",
@@ -819,10 +821,12 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: 16,
     fontWeight: "700",
+    color: "white",
   },
   emptyStateText: {
     opacity: 0.75,
     lineHeight: 20,
+    color: "white",
   },
   recommendationList: {
     gap: 12,
@@ -897,49 +901,56 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   // Top picks row styles
-
+// Top picks row styles
   topPicksRow: {
     flexDirection: "row",
-    justifyContent: "center",
-    gap: "35%", // space between the two picks
+    justifyContent: "center", // Keeps them centered nicely on desktop
+    gap: 16,                  // A clean, fixed pixel gap between cards
+    width: "100%",
     marginBottom: 24,
-    paddingHorizontal: 16,
+    paddingHorizontal: 4,
   },
   topPickContainer: {
+    width: "48%",             // Responsive fallback for smaller screens
+    maxWidth: 160,            // Caps the size on desktop so it doesn't blow up
     alignItems: "center",
-    maxWidth: "45%",
   },
   topPickPosterWrap: {
-    position: "relative",
+    width: "100%",
+    aspectRatio: 2 / 3,       // Scaled perfectly based on the maxWidth constraints
     borderRadius: 12,
+    borderWidth: 3,
     overflow: "hidden",
-    elevation: 4, // Android shadow
-    shadowColor: "#000", // iOS shadow
+    backgroundColor: "rgba(255,255,255,0.05)",
+    
+    // Cross-platform native shadow parameters
+    elevation: 4, 
+    shadowColor: "#000", 
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
   topPickPoster: {
-    width: 160,
-    height: 240,
-    borderRadius: 12,
+    width: "100%",
+    height: "100%",
   },
   topPickBadge: {
     position: "absolute",
     top: 8,
     left: 8,
-    borderRadius: 999,
-    paddingHorizontal: "10%",
-    paddingVertical: "4%",
+    borderRadius: 6, 
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   topPickBadgeText: {
-    color: "black",
-    fontSize: 14,
+    color: "#000",
+    fontSize: 10,
     fontWeight: "800",
   },
   topPickTitle: {
-    marginTop: 12,
+    marginTop: 8,
+    fontSize: 14,
     textAlign: "center",
     fontWeight: "600",
-  },
-});
+    width: "100%",
+  },});
